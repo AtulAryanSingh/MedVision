@@ -24,7 +24,6 @@ Why it exists as a separate module:
 
 import os
 import uuid
-from io import BytesIO
 from typing import Literal
 
 import cv2
@@ -57,13 +56,33 @@ ProcessingType = Literal["kmeans", "gaussian", "sobel"]
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
+def _validate_image_id(image_id: str) -> None:
+    """
+    Reject any image_id that is not a well-formed UUID v4 string.
+
+    What it does:
+      Attempts to parse *image_id* as a UUID.  Raises HTTP 400 if it is not
+      a valid UUID, preventing path-traversal attacks where a caller supplies
+      a crafted string such as ``../../etc/passwd``.
+
+    Why it exists:
+      All image_ids are generated internally by uuid.uuid4(), so any value
+      that cannot be parsed as a UUID did not come from a legitimate upload
+      and must be rejected before the string is used in a file-system path.
+    """
+    try:
+        uuid.UUID(image_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid image_id format.")
+
+
 def _load_image(image_id: str) -> np.ndarray:
     """
     Load a previously uploaded image from disk as a BGR NumPy array.
 
     What it does:
-      Scans UPLOAD_DIR for a file whose stem matches *image_id* and decodes
-      it with OpenCV.
+      Validates *image_id* is a well-formed UUID, then scans UPLOAD_DIR for a
+      file whose stem matches *image_id* and decodes it with OpenCV.
 
     Why it exists:
       Centralises the file-lookup + decode logic so upload, process, and
@@ -71,16 +90,26 @@ def _load_image(image_id: str) -> np.ndarray:
 
     Raises
     ------
+    HTTPException 400
+        If image_id is not a valid UUID (guards against path traversal).
     HTTPException 404
         If no file with the given image_id is found.
     HTTPException 422
         If the file cannot be decoded as an image.
     """
-    # Search for any extension variant that was stored
+    # Validate before using image_id in any file-system path
+    _validate_image_id(image_id)
+
+    # Build the safe path: UPLOAD_DIR is a known, trusted directory; the stem
+    # has been validated to be a UUID so it cannot contain path separators.
+    upload_dir = os.path.realpath(UPLOAD_DIR)
     for ext in ALLOWED_EXTENSIONS:
-        path = os.path.join(UPLOAD_DIR, f"{image_id}{ext}")
-        if os.path.isfile(path):
-            img = cv2.imread(path)
+        candidate = os.path.realpath(os.path.join(upload_dir, f"{image_id}{ext}"))
+        # Extra guard: ensure the resolved path is still inside UPLOAD_DIR
+        if not candidate.startswith(upload_dir + os.sep) and candidate != upload_dir:
+            raise HTTPException(status_code=400, detail="Invalid image_id format.")
+        if os.path.isfile(candidate):
+            img = cv2.imread(candidate)
             if img is None:
                 raise HTTPException(status_code=422, detail="Stored file is not a valid image.")
             return img
