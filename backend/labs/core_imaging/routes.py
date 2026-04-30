@@ -56,23 +56,33 @@ ProcessingType = Literal["kmeans", "gaussian", "sobel"]
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
-def _validate_image_id(image_id: str) -> None:
+def _validate_image_id(image_id: str) -> str:
     """
-    Reject any image_id that is not a well-formed UUID v4 string.
+    Validate that *image_id* is a well-formed UUID and return a canonical,
+    sanitised representation derived from the parsed UUID object.
 
     What it does:
-      Attempts to parse *image_id* as a UUID.  Raises HTTP 400 if it is not
-      a valid UUID, preventing path-traversal attacks where a caller supplies
-      a crafted string such as ``../../etc/passwd``.
+      Parses *image_id* as a UUID.  If parsing succeeds, the canonical string
+      is produced from the UUID object itself (not from the raw input), which
+      breaks the taint chain used by static-analysis tools.  Raises HTTP 400
+      if the value is not a valid UUID.
 
     Why it exists:
       All image_ids are generated internally by uuid.uuid4(), so any value
-      that cannot be parsed as a UUID did not come from a legitimate upload
-      and must be rejected before the string is used in a file-system path.
+      that cannot be parsed as a UUID did not originate from a legitimate
+      upload.  Rejecting such values before any file-system operation prevents
+      path-traversal attacks.
+
+    Returns
+    -------
+    str
+        The canonical lower-case UUID string (e.g. ``"3fa85f64-5717-…"``).
     """
     try:
-        uuid.UUID(image_id)
-    except ValueError:
+        # Reconstruct the string from the UUID object to break the taint chain –
+        # the returned value comes from uuid.UUID, not from user input.
+        return str(uuid.UUID(image_id))
+    except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid image_id format.")
 
 
@@ -81,8 +91,9 @@ def _load_image(image_id: str) -> np.ndarray:
     Load a previously uploaded image from disk as a BGR NumPy array.
 
     What it does:
-      Validates *image_id* is a well-formed UUID, then scans UPLOAD_DIR for a
-      file whose stem matches *image_id* and decodes it with OpenCV.
+      Validates *image_id* as a well-formed UUID, derives a safe canonical
+      string from the parsed UUID object, then scans UPLOAD_DIR for a matching
+      file and decodes it with OpenCV.
 
     Why it exists:
       Centralises the file-lookup + decode logic so upload, process, and
@@ -97,23 +108,22 @@ def _load_image(image_id: str) -> np.ndarray:
     HTTPException 422
         If the file cannot be decoded as an image.
     """
-    # Validate before using image_id in any file-system path
-    _validate_image_id(image_id)
+    # Sanitise: safe_id is derived from uuid.UUID, not from raw user input.
+    safe_id = _validate_image_id(image_id)
 
-    # Build the safe path: UPLOAD_DIR is a known, trusted directory; the stem
-    # has been validated to be a UUID so it cannot contain path separators.
     upload_dir = os.path.realpath(UPLOAD_DIR)
     for ext in ALLOWED_EXTENSIONS:
-        candidate = os.path.realpath(os.path.join(upload_dir, f"{image_id}{ext}"))
-        # Extra guard: ensure the resolved path is still inside UPLOAD_DIR
-        if not candidate.startswith(upload_dir + os.sep) and candidate != upload_dir:
+        # Build path using the sanitised (UUID-object-derived) stem.
+        candidate = os.path.realpath(os.path.join(upload_dir, f"{safe_id}{ext}"))
+        # Belt-and-suspenders: ensure the resolved path stays within UPLOAD_DIR.
+        if not candidate.startswith(upload_dir + os.sep):
             raise HTTPException(status_code=400, detail="Invalid image_id format.")
         if os.path.isfile(candidate):
             img = cv2.imread(candidate)
             if img is None:
                 raise HTTPException(status_code=422, detail="Stored file is not a valid image.")
             return img
-    raise HTTPException(status_code=404, detail=f"Image '{image_id}' not found.")
+    raise HTTPException(status_code=404, detail=f"Image not found.")
 
 
 def _encode_to_png(image: np.ndarray) -> bytes:

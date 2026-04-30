@@ -136,5 +136,8 @@ def apply_sobel(image: np.ndarray) -> np.ndarray:
 
     # Magnitude = sqrt(Gx² + Gy²), normalised to [0, 255]
     magnitude = np.sqrt(grad_x ** 2 + grad_y ** 2)
-    magnitude = np.clip(magnitude / magnitude.max() * 255, 0, 255).astype(np.uint8)
+    max_val = magnitude.max()
+    if max_val > 0:
+        magnitude = magnitude / max_val * 255
+    magnitude = np.clip(magnitude, 0, 255).astype(np.uint8)
     return magnitude
