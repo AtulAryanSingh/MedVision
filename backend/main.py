@@ -1,17 +1,13 @@
 """
-MedVision – FastAPI application entry point.
+MedVision – FastAPI application entry point  (v1.0 production build)
 
 Why this file exists:
-  This is the top-level app factory.  It creates the FastAPI instance,
-  configures CORS (so the local frontend on a different port can reach the
-  backend without browser security errors), mounts a static-file directory
-  so processed images can be served directly by URL, and registers one
-  APIRouter per lab.
+  Top-level app factory.  Creates the FastAPI instance, configures CORS,
+  mounts a static-file directory for uploads, and registers every API router.
 
-  Adding a new lab later means:
-    1. Create  backend/labs/<new_lab>/routes.py  with an APIRouter.
-    2. Import and include it here (see the "Future labs" block below).
-  Nothing else needs to change.
+  Adding a new router later:
+    1. Create  backend/api/<feature>.py  with an APIRouter.
+    2. Import and include it here – nothing else needs to change.
 """
 
 import os
@@ -19,68 +15,71 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-# Core Imaging Lab – the only active lab in v0.1
+# ── New production API routers ─────────────────────────────────────────────
+from api.upload   import router as upload_router
+from api.preview  import router as preview_router
+from api.process  import router as process_router
+from api.features import router as features_router
+from api.cluster  import router as cluster_router
+from api.report   import router as report_router
+
+# ── Legacy Core Imaging Lab router (v0.1, kept for backward compatibility) ─
 from labs.core_imaging.routes import router as core_imaging_router
 
-# ── App factory ──────────────────────────────────────────────────────────────
+# ── App factory ────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="MedVision API",
-    version="0.1.0",
-    description="Modular medical-imaging platform – Core Imaging Lab (v0.1)",
+    version="1.0.0",
+    description=(
+        "Modular medical-imaging intelligence platform — "
+        "Core Imaging · Processing · Features · ML · Analysis"
+    ),
 )
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# Allow the local frontend (any localhost port) to call the backend during
-# development.  Restrict this list in production.
+# ── CORS ───────────────────────────────────────────────────────────────────
+# Allow all common localhost variants for local development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost",
         "http://localhost:3000",
+        "http://localhost:5173",   # Vite default
         "http://localhost:5500",
         "http://127.0.0.1",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
         "http://127.0.0.1:5500",
-        # Allow file:// origins for opening index.html directly in a browser
-        "null",
+        "null",                    # file:// origin
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Static files ──────────────────────────────────────────────────────────────
-# Serve the uploads folder so processed images can be referenced by URL.
+# ── Static file serving ────────────────────────────────────────────────────
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "data", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# ── Routers ───────────────────────────────────────────────────────────────────
+# ── Register routers ───────────────────────────────────────────────────────
+app.include_router(upload_router,   prefix="/api",            tags=["Upload"])
+app.include_router(preview_router,  prefix="/api",            tags=["Preview"])
+app.include_router(process_router,  prefix="/api",            tags=["Processing"])
+app.include_router(features_router, prefix="/api",            tags=["Features"])
+app.include_router(cluster_router,  prefix="/api",            tags=["ML / Clustering"])
+app.include_router(report_router,   prefix="/api",            tags=["Analysis Report"])
 
-# Active lab – Core Imaging Lab
-app.include_router(core_imaging_router, prefix="/api/core-imaging", tags=["Core Imaging Lab"])
+# Legacy v0.1 endpoints (still functional)
+app.include_router(core_imaging_router, prefix="/api/core-imaging", tags=["Core Imaging Lab (legacy)"])
 
-# ── Future labs (placeholders – uncomment when each lab is implemented) ───────
-# from labs.dicom_lab.routes        import router as dicom_router
-# from labs.classical_pipeline.routes import router as classical_router
-# from labs.pattern_insight.routes  import router as pattern_router
-# from labs.ai_lab.routes           import router as ai_router
-#
-# app.include_router(dicom_router,     prefix="/api/dicom",     tags=["DICOM Lab"])
-# app.include_router(classical_router, prefix="/api/classical", tags=["Classical Pipeline"])
-# app.include_router(pattern_router,   prefix="/api/pattern",   tags=["Pattern Insight Lab"])
-# app.include_router(ai_router,        prefix="/api/ai",        tags=["AI/Deep Learning Lab"])
-
-
-# ── Health check ─────────────────────────────────────────────────────────────
+# ── Health check ───────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Health"])
 def root():
     """Return a simple health-check payload so operators can verify the API is up."""
     return {
         "status": "ok",
-        "version": "0.1.0",
-        "active_labs": ["core_imaging"],
-        "future_labs": ["dicom_lab", "classical_pipeline", "pattern_insight", "ai_lab"],
+        "version": "1.0.0",
+        "modules": ["upload", "preview", "processing", "features", "ml", "analysis"],
     }

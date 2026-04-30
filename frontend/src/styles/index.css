@@ -1,0 +1,328 @@
+/* ======================================================================
+   MedVision – Global Styles  (index.css)
+   Dark-themed, minimal, clean.
+   ====================================================================== */
+
+/* ── CSS variables ─────────────────────────────────────────────────────────── */
+:root {
+  --bg:           #0b0b18;
+  --surface:      #13132a;
+  --surface2:     #1a1a3a;
+  --surface3:     #111128;
+  --accent:       #0f9b8e;
+  --accent-lite:  #1de9b6;
+  --purple:       #7c4dff;
+  --text:         #e2e2f0;
+  --text-muted:   #7878a0;
+  --border:       #252545;
+  --danger:       #e53935;
+  --warn:         #ff9100;
+  --radius:       10px;
+  --radius-sm:    6px;
+  --shadow:       0 4px 24px rgba(0,0,0,.45);
+  --trans:        .18s ease;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
+html { font-size:15px; scroll-behavior:smooth }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.55;
+}
+
+/* ── App shell ─────────────────────────────────────────────────────────────── */
+.app { display:flex; flex-direction:column; min-height:100vh }
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: .7rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand { display:flex; align-items:center; gap:.45rem }
+.brand-icon { font-size:1.4rem }
+.brand-name { font-size:1.2rem; font-weight:700; color:var(--accent-lite); letter-spacing:-.5px }
+.brand-badge {
+  font-size:.65rem; background:var(--accent); color:#fff;
+  padding:1px 6px; border-radius:20px; font-weight:700; letter-spacing:.5px;
+}
+
+.header-meta { display:flex; gap:.5rem; flex-wrap:wrap; margin-left:auto }
+
+.chip {
+  font-size:.75rem; padding:2px 10px; border-radius:20px;
+  background:var(--surface2); border:1px solid var(--border); color:var(--text-muted);
+  white-space:nowrap;
+}
+.chip.dim   { color:var(--text-muted) }
+.chip.accent{ background:rgba(15,155,142,.2); border-color:var(--accent); color:var(--accent-lite) }
+
+/* ── Tab navigation ────────────────────────────────────────────────────────── */
+.tab-nav {
+  display: flex;
+  background: var(--surface3);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.tab-nav::-webkit-scrollbar { display:none }
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .65rem 1.2rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: .85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--trans), border-color var(--trans), background var(--trans);
+  flex-shrink: 0;
+}
+.tab-btn:hover:not(.disabled) { color:var(--text); background:rgba(255,255,255,.03) }
+.tab-btn.active { color:var(--accent-lite); border-bottom-color:var(--accent) }
+.tab-btn.disabled { opacity:.35; cursor:not-allowed }
+
+.tab-icon { font-size:1rem }
+.tab-label { font-size:.82rem }
+
+/* ── Main content ──────────────────────────────────────────────────────────── */
+.main { flex:1; max-width:1180px; width:100%; margin:0 auto; padding:1.75rem 1.5rem }
+
+/* ── Tab panel ─────────────────────────────────────────────────────────────── */
+.tab-panel { display:flex; flex-direction:column; gap:1.5rem }
+
+.section-title {
+  font-size:1.05rem; font-weight:600; color:var(--accent-lite);
+  letter-spacing:.2px; border-bottom:1px solid var(--border); padding-bottom:.5rem;
+}
+.sub-title { font-size:.9rem; font-weight:600; color:var(--text-muted); letter-spacing:.3px }
+
+/* ── Drop zone ─────────────────────────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 3rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--trans), background var(--trans);
+  user-select: none;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent); background: rgba(15,155,142,.06);
+}
+.drop-icon { font-size:2.5rem; margin-bottom:.5rem }
+.drop-text { font-size:.95rem; color:var(--text); margin-bottom:.3rem }
+.drop-hint { font-size:.78rem; color:var(--text-muted) }
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .5rem 1.3rem;
+  border: none; border-radius: var(--radius-sm);
+  font-size: .88rem; font-weight: 600;
+  cursor: pointer;
+  transition: filter var(--trans), opacity var(--trans);
+  align-self: flex-start;
+}
+.btn:disabled { opacity:.35; cursor:not-allowed }
+.btn.primary  { background:var(--accent); color:#fff }
+.btn.secondary{ background:var(--surface2); color:var(--accent-lite); border:1px solid var(--border) }
+.btn.primary:not(:disabled):hover  { filter:brightness(1.15) }
+.btn.secondary:not(:disabled):hover{ filter:brightness(1.2) }
+
+/* ── Alerts ────────────────────────────────────────────────────────────────── */
+.alert {
+  padding: .65rem 1rem; border-radius: var(--radius-sm); font-size:.87rem;
+}
+.alert.error { background:rgba(229,57,53,.15); border:1px solid var(--danger); color:#ff8a80 }
+.alert.warn  { background:rgba(255,145,0,.1);  border:1px solid var(--warn);   color:#ffd180 }
+
+.empty-state {
+  color: var(--text-muted); font-size:.92rem; padding:2rem 0; text-align:center;
+}
+
+/* ── Meta card ─────────────────────────────────────────────────────────────── */
+.meta-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+}
+.meta-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:.65rem 1.5rem }
+.meta-item { display:flex; flex-direction:column; gap:.1rem }
+.meta-label { font-size:.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px }
+.meta-value { font-size:.88rem; color:var(--text); font-weight:500 }
+
+/* ── Slice viewer ──────────────────────────────────────────────────────────── */
+.slice-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem }
+@media(max-width:700px){ .slice-grid{ grid-template-columns:1fr } }
+
+.slice-figure {
+  background: var(--surface); border:1px solid var(--border);
+  border-radius: var(--radius); overflow:hidden;
+}
+.slice-figure figcaption {
+  padding:.35rem .75rem; font-size:.78rem; color:var(--text-muted);
+  border-bottom:1px solid var(--border); letter-spacing:.5px; text-transform:uppercase;
+}
+.slice-img { display:block; width:100%; max-height:320px; object-fit:contain; background:#000 }
+
+.slider-row { display:flex; flex-direction:column; gap:.5rem }
+.slider-label { display:flex; flex-direction:column; gap:.2rem; font-size:.8rem; color:var(--text-muted) }
+.slider-label input[type=range] { width:100%; accent-color:var(--accent) }
+
+.spinner-inline { animation:pulse 1.2s infinite }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+/* ── Controls bar ──────────────────────────────────────────────────────────── */
+.controls-bar {
+  display: flex; align-items: flex-end; gap: 1.25rem; flex-wrap: wrap;
+  background: var(--surface); border:1px solid var(--border);
+  border-radius: var(--radius); padding: 1rem 1.25rem;
+}
+.ctrl-label {
+  display:flex; flex-direction:column; gap:.25rem;
+  font-size:.78rem; color:var(--text-muted); min-width:150px;
+}
+.ctrl-label select {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  padding:.4rem .6rem; border-radius:var(--radius-sm); font-size:.88rem; cursor:pointer; outline:none;
+}
+.ctrl-label select:focus { border-color:var(--accent) }
+.ctrl-label input[type=range] { accent-color:var(--accent); width:100% }
+
+/* ── Image comparison ──────────────────────────────────────────────────────── */
+.compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem }
+@media(max-width:700px){ .compare-grid{ grid-template-columns:1fr } }
+
+.img-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); overflow:hidden;
+}
+.img-card figcaption {
+  padding:.35rem .75rem; font-size:.8rem; color:var(--text-muted); border-bottom:1px solid var(--border);
+}
+.img-card img { display:block; width:100%; max-height:400px; object-fit:contain; background:#000 }
+
+/* ── Info banner ───────────────────────────────────────────────────────────── */
+.info-banner {
+  background:rgba(29,233,182,.08); border:1px solid rgba(29,233,182,.25);
+  border-radius:var(--radius-sm); padding:.5rem 1rem; font-size:.86rem; color:var(--accent-lite);
+}
+
+/* ── Histogram grid ────────────────────────────────────────────────────────── */
+.hist-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem }
+@media(max-width:700px){ .hist-grid{ grid-template-columns:1fr } }
+
+.hist-panel {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:1rem;
+}
+.hist-title { font-size:.82rem; color:var(--text-muted); margin-bottom:.5rem; text-align:center }
+
+/* ── Feature grid ──────────────────────────────────────────────────────────── */
+.feature-grid {
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:.85rem;
+}
+.stat-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:.85rem 1rem; text-align:center;
+}
+.stat-label { font-size:.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:.2rem }
+.stat-value { font-size:1.55rem; font-weight:700; color:var(--accent-lite); letter-spacing:-1px; line-height:1.1 }
+.stat-unit  { font-size:.7rem; color:var(--text-muted); margin-top:.1rem }
+
+/* ── Percentile chips ──────────────────────────────────────────────────────── */
+.percentile-row { display:flex; gap:.75rem; flex-wrap:wrap }
+.pct-chip {
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:.4rem .85rem;
+  display:flex; flex-direction:column; align-items:center; gap:.15rem; min-width:64px;
+}
+.pct-label { font-size:.68rem; color:var(--text-muted); text-transform:uppercase }
+.pct-value { font-size:1rem; font-weight:600; color:var(--text) }
+
+/* ── Chart container ───────────────────────────────────────────────────────── */
+.chart-wrap {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:1rem;
+}
+.caption { font-size:.76rem; color:var(--text-muted); text-align:center }
+.ev-note  { font-size:.78rem; color:var(--text-muted); font-weight:400; margin-left:.3rem }
+
+/* ── Cluster table ─────────────────────────────────────────────────────────── */
+.cluster-table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; overflow:auto }
+.cluster-table { width:100%; border-collapse:collapse; font-size:.84rem }
+.cluster-table th {
+  text-align:left; padding:.45rem .6rem; color:var(--text-muted);
+  border-bottom:1px solid var(--border); font-size:.75rem; text-transform:uppercase;
+}
+.cluster-table td { padding:.45rem .6rem; border-bottom:1px solid rgba(255,255,255,.04) }
+.cluster-table tr:last-child td { border-bottom:none }
+.cluster-dot {
+  display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:.4rem; vertical-align:middle;
+}
+
+/* ── Report ────────────────────────────────────────────────────────────────── */
+.report-wrap { display:flex; flex-direction:column; gap:1.25rem }
+.report-header {
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  padding-bottom:.75rem; border-bottom:1px solid var(--border);
+}
+.report-header h3 { font-size:1rem; color:var(--accent-lite) }
+
+.report-section {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:1.2rem 1.5rem;
+}
+.report-section-title { font-size:.9rem; font-weight:600; margin-bottom:1rem; color:var(--text) }
+
+.kv-grid  { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:.5rem 1.5rem }
+.kv-row   { display:flex; flex-direction:column; gap:.05rem }
+.kv-row dt { font-size:.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px }
+.kv-row dd { font-size:.88rem; color:var(--text); font-weight:500 }
+
+.pipeline-step {
+  display:flex; align-items:center; gap:.75rem;
+  padding:.4rem .6rem; border-radius:var(--radius-sm);
+  background:var(--surface2); font-size:.84rem; margin-bottom:.4rem;
+}
+.step-num  { background:var(--accent); color:#fff; width:20px; height:20px; border-radius:50%; display:grid; place-items:center; font-size:.72rem; font-weight:700; flex-shrink:0 }
+.step-params { color:var(--text-muted); font-size:.78rem }
+
+.interpretation-list { padding-left:1.2rem; display:flex; flex-direction:column; gap:.5rem }
+.interpretation-list li { font-size:.88rem; color:var(--text) }
+
+/* ── Raw JSON block ────────────────────────────────────────────────────────── */
+.json-details summary {
+  cursor:pointer; font-size:.82rem; color:var(--text-muted); padding:.3rem 0; user-select:none;
+}
+.json-details summary:hover { color:var(--text) }
+.json-details pre {
+  background:#080814; border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:1rem; font-size:.76rem; overflow:auto; max-height:360px; color:#b0c4de; margin-top:.5rem;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width:6px; height:6px }
+::-webkit-scrollbar-track { background:transparent }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px }
+::-webkit-scrollbar-thumb:hover { background:var(--text-muted) }
