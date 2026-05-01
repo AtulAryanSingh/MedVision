@@ -17,7 +17,6 @@ Dependencies: OpenCV, NumPy, SciPy
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
-from typing import Any
 
 
 def apply_gaussian(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
@@ -44,7 +43,7 @@ def apply_gaussian(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
     np.ndarray – smoothed float32 array, same shape as *arr*.
     """
     if arr.ndim == 2:
-        sigma_arg: Any = sigma
+        sigma_arg: float | tuple = sigma
     else:
         # Only blur spatial axes; avoid cross-channel blurring
         sigma_arg = (sigma, sigma, 0)

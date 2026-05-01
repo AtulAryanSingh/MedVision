@@ -130,7 +130,10 @@ export default function ProcessingLab({ imageId }) {
           <div className="compare-grid">
             <figure className="img-card">
               <figcaption>Original</figcaption>
-              <img src={originalImg || result.result_image} alt="original" style={{ filter: 'grayscale(100%)' }} />
+              {originalImg
+                ? <img src={originalImg} alt="original" style={{ filter: 'grayscale(100%)' }} />
+                : <div className="empty-state" style={{ minHeight: 120 }}>Loading original…</div>
+              }
             </figure>
             <figure className="img-card">
               <figcaption>Processed — {currentType?.label}</figcaption>
