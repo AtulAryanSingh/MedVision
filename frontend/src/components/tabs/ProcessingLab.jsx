@@ -15,7 +15,7 @@
  *   gives users immediate feedback on how each operation affects the image.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts'
@@ -34,14 +34,21 @@ const PROCESSING_TYPES = [
 ]
 
 export default function ProcessingLab({ imageId }) {
-  const [ptype,     setPtype]     = useState('gaussian')
-  const [sigma,     setSigma]     = useState(2.0)
-  const [kernelSz,  setKernelSz]  = useState(5)
-  const [pct,       setPct]       = useState(95)
-  const [threshold, setThreshold] = useState(128)
-  const [result,    setResult]    = useState(null)
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState(null)
+  const [ptype,       setPtype]       = useState('gaussian')
+  const [sigma,       setSigma]       = useState(2.0)
+  const [kernelSz,    setKernelSz]    = useState(5)
+  const [pct,         setPct]         = useState(95)
+  const [threshold,   setThreshold]   = useState(128)
+  const [result,      setResult]      = useState(null)
+  const [originalImg, setOriginalImg] = useState(null)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState(null)
+
+  /* Fetch the original axial preview once we have an imageId */
+  useEffect(() => {
+    if (!imageId) return
+    api.preview(imageId).then(p => setOriginalImg(p.axial)).catch(() => {})
+  }, [imageId])
 
   const currentType = PROCESSING_TYPES.find(t => t.value === ptype)
 
@@ -123,7 +130,7 @@ export default function ProcessingLab({ imageId }) {
           <div className="compare-grid">
             <figure className="img-card">
               <figcaption>Original</figcaption>
-              <img src={result.result_image} alt="original" style={{ filter: 'grayscale(100%)' }} />
+              <img src={originalImg || result.result_image} alt="original" style={{ filter: 'grayscale(100%)' }} />
             </figure>
             <figure className="img-card">
               <figcaption>Processed — {currentType?.label}</figcaption>

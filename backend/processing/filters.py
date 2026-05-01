@@ -17,6 +17,7 @@ Dependencies: OpenCV, NumPy, SciPy
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
+from typing import Any
 
 
 def apply_gaussian(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
