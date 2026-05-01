@@ -12,7 +12,7 @@ Why it exists:
 
 Dependencies: NumPy, scikit-learn
 """
-
+from __future__ import annotations
 from typing import Any, Dict, List
 
 import cv2
