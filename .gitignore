@@ -23,6 +23,10 @@ env/
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
 
+# Node
+node_modules/
+frontend/dist/
+
 # OS / editor
 .DS_Store
 Thumbs.db
