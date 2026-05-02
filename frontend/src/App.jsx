@@ -1,76 +1,111 @@
 import { useState } from 'react'
-import UploadViewer    from './components/tabs/UploadViewer.jsx'
-import ProcessingLab   from './components/tabs/ProcessingLab.jsx'
-import FeatureExplorer from './components/tabs/FeatureExplorer.jsx'
-import MLLab           from './components/tabs/MLLab.jsx'
-import AnalysisReport  from './components/tabs/AnalysisReport.jsx'
+import Home          from './pages/Home.jsx'
+import DataManager   from './pages/DataManager.jsx'
+import Workspace     from './pages/Workspace.jsx'
+import QCPlots       from './pages/QCPlots.jsx'
+import Tools         from './pages/Tools.jsx'
+import Patchify      from './pages/Patchify.jsx'
+import DeepLearning  from './pages/DeepLearning.jsx'
+import Downloads     from './pages/Downloads.jsx'
 
-const TABS = [
-  { id: 'upload',     icon: '📤', label: 'Upload & Viewer'  },
-  { id: 'processing', icon: '⚗️',  label: 'Processing Lab'  },
-  { id: 'features',   icon: '📊', label: 'Feature Explorer' },
-  { id: 'ml',         icon: '🤖', label: 'ML Lab'           },
-  { id: 'report',     icon: '📋', label: 'Analysis Report'  },
+const NAV = [
+  { id: 'home',      icon: '🏠', label: 'Home',          section: 'main' },
+  { id: 'data',      icon: '📂', label: 'Data Manager',  section: 'main' },
+  { id: 'workspace', icon: '🔬', label: 'Workspace',     section: 'viewer' },
+  { id: 'qc',        icon: '📊', label: 'QC & Plots',    section: 'viewer' },
+  { id: 'tools',     icon: '⚗️',  label: 'Tools',        section: 'tools' },
+  { id: 'patchify',  icon: '🧩', label: 'Patchify 3D',   section: 'tools' },
+  { id: 'dl',        icon: '🧬', label: 'Deep Learning', section: 'tools' },
+  { id: 'exports',   icon: '📥', label: 'Downloads',     section: 'exports' },
 ]
 
+const SECTION_LABELS = { main: 'Explorer', viewer: 'Viewer', tools: 'Tools', exports: 'Export' }
+
 export default function App() {
-  const [activeTab,  setActiveTab]  = useState('upload')
-  const [imageId,    setImageId]    = useState(null)
-  const [metadata,   setMetadata]   = useState(null)
+  const [page,     setPage]     = useState('home')
+  const [imageId,  setImageId]  = useState(null)
+  const [metadata, setMetadata] = useState(null)
 
   function handleUpload(id, meta) {
     setImageId(id)
     setMetadata(meta)
-    setActiveTab('processing')
+    setPage('workspace')
   }
 
-  const tabProps = { imageId, metadata }
+  function renderPage() {
+    const props = { imageId, metadata }
+    switch (page) {
+      case 'home':      return <Home         onNavigate={setPage} />
+      case 'data':      return <DataManager  {...props} onUpload={handleUpload} />
+      case 'workspace': return <Workspace    {...props} />
+      case 'qc':        return <QCPlots      {...props} />
+      case 'tools':     return <Tools        {...props} />
+      case 'patchify':  return <Patchify     {...props} />
+      case 'dl':        return <DeepLearning {...props} />
+      case 'exports':   return <Downloads    {...props} />
+      default:          return <Home         onNavigate={setPage} />
+    }
+  }
+
+  const activeNav = NAV.find(n => n.id === page)
+  const sections  = [...new Set(NAV.map(n => n.section))]
 
   return (
-    <div className="app">
-      {/* ── Header ── */}
-      <header className="header">
-        <div className="brand">
+    <div id="app-root" style={{ display: 'flex', minHeight: '100vh' }}>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
           <span className="brand-icon">🔬</span>
           <span className="brand-name">MedVision</span>
-          <span className="brand-badge">v1.0</span>
+          <span className="brand-badge">v2</span>
         </div>
-        {imageId && (
-          <div className="header-meta">
-            <span className="chip">
-              {metadata?.modality !== 'unknown' ? metadata?.modality : metadata?.file_type?.toUpperCase()}
-            </span>
-            <span className="chip dim">{metadata?.shape?.join(' × ')} px</span>
-            {metadata?.is_3d && <span className="chip accent">3-D Volume</span>}
+        <nav style={{ flex: 1, overflowY: 'auto' }}>
+          {sections.map((sec, si) => {
+            const items = NAV.filter(n => n.section === sec)
+            return (
+              <div key={sec} className="sidebar-section">
+                <div className="sidebar-section-label">{SECTION_LABELS[sec]}</div>
+                {items.map(item => (
+                  <button
+                    key={item.id}
+                    className={`nav-item${page === item.id ? ' active' : ''}`}
+                    onClick={() => setPage(item.id)}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    <span className="nav-label">{item.label}</span>
+                  </button>
+                ))}
+                {si < sections.length - 1 && <div className="nav-divider" />}
+              </div>
+            )
+          })}
+        </nav>
+        <div className="sidebar-footer">Medical Imaging Platform</div>
+      </aside>
+
+      <div className="app-content">
+        <header className="topbar">
+          <span className="topbar-title">{activeNav?.icon}&nbsp; {activeNav?.label}</span>
+          <div className="topbar-chips">
+            {imageId ? (
+              <>
+                <span className="chip blue">
+                  {metadata?.modality !== 'unknown' ? metadata?.modality : metadata?.file_type?.toUpperCase()}
+                </span>
+                <span className="chip">{metadata?.shape?.join(' × ')} px</span>
+                {metadata?.spacing && (
+                  <span className="chip teal">{metadata.spacing.map(s => s.toFixed(2)).join('×')} mm</span>
+                )}
+                {metadata?.is_3d && <span className="chip green">3-D Volume</span>}
+              </>
+            ) : (
+              <span className="chip">No image loaded</span>
+            )}
           </div>
-        )}
-      </header>
-
-      {/* ── Tab navigation ── */}
-      <nav className="tab-nav" role="tablist">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={activeTab === t.id}
-            className={`tab-btn${activeTab === t.id ? ' active' : ''}${!imageId && t.id !== 'upload' ? ' disabled' : ''}`}
-            onClick={() => (imageId || t.id === 'upload') && setActiveTab(t.id)}
-            title={!imageId && t.id !== 'upload' ? 'Upload an image first' : undefined}
-          >
-            <span className="tab-icon">{t.icon}</span>
-            <span className="tab-label">{t.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      {/* ── Tab panels ── */}
-      <main className="main">
-        {activeTab === 'upload'     && <UploadViewer    {...tabProps} onUpload={handleUpload} />}
-        {activeTab === 'processing' && <ProcessingLab   {...tabProps} />}
-        {activeTab === 'features'   && <FeatureExplorer {...tabProps} />}
-        {activeTab === 'ml'         && <MLLab           {...tabProps} />}
-        {activeTab === 'report'     && <AnalysisReport  {...tabProps} />}
-      </main>
+        </header>
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {renderPage()}
+        </main>
+      </div>
     </div>
   )
 }

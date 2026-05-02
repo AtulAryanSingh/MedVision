@@ -18,10 +18,13 @@ from fastapi.staticfiles import StaticFiles
 # ── New production API routers ─────────────────────────────────────────────
 from api.upload   import router as upload_router
 from api.preview  import router as preview_router
+from api.mpr      import router as mpr_router
 from api.process  import router as process_router
 from api.features import router as features_router
 from api.cluster  import router as cluster_router
 from api.report   import router as report_router
+from api.patchify import router as patchify_router
+from api.export   import router as export_router
 
 # ── Legacy Core Imaging Lab router (v0.1, kept for backward compatibility) ─
 from labs.core_imaging.routes import router as core_imaging_router
@@ -65,10 +68,13 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # ── Register routers ───────────────────────────────────────────────────────
 app.include_router(upload_router,   prefix="/api",            tags=["Upload"])
 app.include_router(preview_router,  prefix="/api",            tags=["Preview"])
+app.include_router(mpr_router,      prefix="/api",            tags=["MPR"])
 app.include_router(process_router,  prefix="/api",            tags=["Processing"])
 app.include_router(features_router, prefix="/api",            tags=["Features"])
 app.include_router(cluster_router,  prefix="/api",            tags=["ML / Clustering"])
 app.include_router(report_router,   prefix="/api",            tags=["Analysis Report"])
+app.include_router(patchify_router, prefix="/api",            tags=["Patchify"])
+app.include_router(export_router,   prefix="/api",            tags=["Export"])
 
 # Legacy v0.1 endpoints (still functional)
 app.include_router(core_imaging_router, prefix="/api/core-imaging", tags=["Core Imaging Lab (legacy)"])

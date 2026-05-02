@@ -49,7 +49,7 @@ class ProcessRequest(BaseModel):
 
 
 _ALLOWED_TYPES = {
-    "gaussian", "sobel", "cdf_threshold",
+    "gaussian", "median", "sobel", "cdf_threshold",
     "erosion", "dilation", "opening", "closing",
     "connected_components", "bounding_boxes",
 }
@@ -93,6 +93,8 @@ async def process_image(req: ProcessRequest):
     ptype = req.processing_type
     if ptype == "gaussian":
         result = flt.apply_gaussian(arr, sigma=req.sigma)
+    elif ptype == "median":
+        result = flt.apply_median(arr, kernel_size=req.kernel_size)
     elif ptype == "sobel":
         result = flt.apply_sobel(arr)
     elif ptype == "cdf_threshold":
