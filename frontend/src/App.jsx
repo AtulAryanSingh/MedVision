@@ -51,7 +51,7 @@ export default function App() {
   const sections  = [...new Set(NAV.map(n => n.section))]
 
   return (
-    <div id="app-root" style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="brand-icon">🔬</span>

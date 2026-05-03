@@ -131,10 +131,10 @@ export default function DataManager({ imageId, metadata, onUpload }) {
                   <div className="meta-table">
                     {Object.entries(metadata.extra_meta)
                       .filter(([, v]) => v && String(v).trim())
-                      .map(([k, v]) => (
-                        <><span key={k + '_k'} className="meta-key">{k.replace(/_/g, ' ')}</span>
-                        <span key={k + '_v'} className="meta-val">{String(v)}</span></>
-                      ))}
+                      .flatMap(([k, v]) => [
+                        <span key={`meta-k-${k}`} className="meta-key">{k.replace(/_/g, ' ')}</span>,
+                        <span key={`meta-v-${k}`} className="meta-val">{String(v)}</span>,
+                      ])}
                   </div>
                 </div>
               </div>
