@@ -1,21 +1,14 @@
-/* MedVision – api/client.js
- *
- * What this module does:
- *   Provides a thin wrapper around fetch() so every tab component uses the
- *   same base URL and error-handling pattern.
- *
- * Why it exists:
- *   Centralising all API calls here means only one place needs to change if
- *   the backend URL or auth headers change.
+/* MedVision v2 – api/client.js
+ * Centralised fetch wrapper for all API calls.
  */
 
 const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-async function _request(method, path, body, isFormData = false) {
+async function _req(method, path, body, isForm = false) {
   const opts = { method, headers: {} }
   if (body) {
-    if (isFormData) {
-      opts.body = body                            // FormData sets Content-Type automatically
+    if (isForm) {
+      opts.body = body
     } else {
       opts.headers['Content-Type'] = 'application/json'
       opts.body = JSON.stringify(body)
@@ -30,40 +23,61 @@ async function _request(method, path, body, isFormData = false) {
 }
 
 export const api = {
-  /** Upload a File object; returns metadata + image_id */
   upload(file) {
     const fd = new FormData()
     fd.append('file', file)
-    return _request('POST', '/api/upload', fd, true)
+    return _req('POST', '/api/upload', fd, true)
   },
 
-  /** Get axial/sagittal/coronal slice base64 PNGs */
   preview(imageId, { axialIdx, coronalIdx, sagittalIdx } = {}) {
-    const params = new URLSearchParams()
-    if (axialIdx    != null) params.set('axial_idx',    axialIdx)
-    if (coronalIdx  != null) params.set('coronal_idx',  coronalIdx)
-    if (sagittalIdx != null) params.set('sagittal_idx', sagittalIdx)
-    const qs = params.toString() ? `?${params}` : ''
-    return _request('GET', `/api/preview/${imageId}${qs}`)
+    const p = new URLSearchParams()
+    if (axialIdx    != null) p.set('axial_idx',    axialIdx)
+    if (coronalIdx  != null) p.set('coronal_idx',  coronalIdx)
+    if (sagittalIdx != null) p.set('sagittal_idx', sagittalIdx)
+    return _req('GET', `/api/preview/${imageId}${p.toString() ? '?' + p : ''}`)
   },
 
-  /** Run a processing operation; returns result_image + histograms */
+  mpr(imageId, { axialIdx, coronalIdx, sagittalIdx, windowCenter, windowWidth, maxDim } = {}) {
+    const p = new URLSearchParams()
+    if (axialIdx     != null) p.set('axial_idx',     axialIdx)
+    if (coronalIdx   != null) p.set('coronal_idx',   coronalIdx)
+    if (sagittalIdx  != null) p.set('sagittal_idx',  sagittalIdx)
+    if (windowCenter != null) p.set('window_center', windowCenter)
+    if (windowWidth  != null) p.set('window_width',  windowWidth)
+    if (maxDim       != null) p.set('max_dim',       maxDim)
+    return _req('GET', `/api/mpr/${imageId}${p.toString() ? '?' + p : ''}`)
+  },
+
   process(imageId, processingType, params = {}) {
-    return _request('POST', '/api/process', { image_id: imageId, processing_type: processingType, ...params })
+    return _req('POST', '/api/process', { image_id: imageId, processing_type: processingType, ...params })
   },
 
-  /** Extract feature vector */
   features(imageId) {
-    return _request('POST', '/api/features', { image_id: imageId })
+    return _req('POST', '/api/features', { image_id: imageId })
   },
 
-  /** Run KMeans + PCA */
   cluster(imageId, k = 4, nSamples = 5000) {
-    return _request('POST', '/api/cluster', { image_id: imageId, k, n_samples: nSamples })
+    return _req('POST', '/api/cluster', { image_id: imageId, k, n_samples: nSamples })
   },
 
-  /** Get structured analysis report */
   report(imageId) {
-    return _request('GET', `/api/report/${imageId}`)
+    return _req('GET', `/api/report/${imageId}`)
+  },
+
+  patchify(imageId, patchSize = 32, stride = 16) {
+    return _req('POST', '/api/patchify', { image_id: imageId, patch_size: patchSize, stride })
+  },
+
+  register(imageId, transformType, params = {}) {
+    return _req('POST', '/api/register', { image_id: imageId, transform_type: transformType, ...params })
+  },
+
+  exportUrl: {
+    png: (imageId) => `${BASE}/api/export/${imageId}/png`,
+    csv: (imageId) => `${BASE}/api/export/${imageId}/csv`,
+  },
+
+  exportNpy(imageId) {
+    return _req('GET', `/api/export/${imageId}/npy`)
   },
 }

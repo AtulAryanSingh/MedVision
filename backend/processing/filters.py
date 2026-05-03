@@ -51,6 +51,35 @@ def apply_gaussian(arr: np.ndarray, sigma: float = 2.0) -> np.ndarray:
     return np.clip(blurred, arr.min(), arr.max())
 
 
+def apply_median(arr: np.ndarray, kernel_size: int = 5) -> np.ndarray:
+    """
+    Apply a median filter to remove salt-and-pepper noise.
+
+    What it does:
+      Replaces each pixel with the median of its (kernel_size × kernel_size)
+      neighbourhood.  Works on each spatial plane independently for 3-D inputs.
+
+    Why it exists:
+      Median filtering preserves edges better than Gaussian smoothing while
+      being very effective against impulse (salt-and-pepper) noise.
+
+    Parameters
+    ----------
+    arr         : np.ndarray – 2-D float32 array
+    kernel_size : int        – filter window size (forced to odd, min 3)
+
+    Returns
+    -------
+    np.ndarray – filtered float32 array, same shape as *arr*.
+    """
+    from scipy.ndimage import median_filter
+    size = max(3, int(kernel_size))
+    if size % 2 == 0:
+        size += 1
+    filtered = median_filter(arr.astype(np.float32), size=size)
+    return filtered.astype(np.float32)
+
+
 def apply_sobel(arr: np.ndarray) -> np.ndarray:
     """
     Detect edges using Sobel gradient operators.
