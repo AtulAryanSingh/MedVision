@@ -1,0 +1,1 @@
+{"file_type": "png_jpg", "shape": [64, 64, 3], "dtype_str": "float32", "ndim": 3, "is_3d": false, "intensity_min": 0.0, "intensity_max": 254.0, "spacing": [1.0, 1.0], "modality": "unknown", "extra_meta": {}, "image_id": "063e0b51-9572-4520-b6e2-e0a30291faba", "filename": "test.png", "size_bytes": 12432}

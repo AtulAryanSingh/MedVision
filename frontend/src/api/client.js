@@ -29,6 +29,14 @@ export const api = {
     return _req('POST', '/api/upload', fd, true)
   },
 
+  uploadSeries(files) {
+    const fd = new FormData()
+    for (const f of files) {
+      fd.append('files', f)
+    }
+    return _req('POST', '/api/upload-series', fd, true)
+  },
+
   preview(imageId, { axialIdx, coronalIdx, sagittalIdx } = {}) {
     const p = new URLSearchParams()
     if (axialIdx    != null) p.set('axial_idx',    axialIdx)

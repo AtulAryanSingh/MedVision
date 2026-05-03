@@ -1,30 +1,65 @@
 /**
  * pages/DataManager.jsx – Upload a medical image and display its metadata
+ *
+ * Supports two upload modes:
+ *   single – one file: DICOM, NIfTI, PNG, or JPEG
+ *   series – multiple .dcm files that form a DICOM series / volume
  */
 import { useState, useRef } from 'react'
 import { api } from '../api/client.js'
 
-const ACCEPTED = '.png,.jpg,.jpeg,.dcm,.nii,.gz'
+const ACCEPTED_SINGLE = '.png,.jpg,.jpeg,.dcm,.nii,.gz'
+const ACCEPTED_SERIES = '.dcm'
 
 export default function DataManager({ imageId, metadata, onUpload, onReset }) {
-  const [file,      setFile]      = useState(null)
+  const [mode,      setMode]      = useState('single')   // 'single' | 'series'
+  const [file,      setFile]      = useState(null)        // single-file mode
+  const [seriesFiles, setSeriesFiles] = useState([])      // series mode
   const [dragging,  setDragging]  = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error,     setError]     = useState(null)
-  const fileRef = useRef()
+  const singleRef = useRef()
+  const seriesRef = useRef()
 
-  function pickFile(f) {
+  function pickSingle(f) {
     if (!f) return
     setFile(f)
+    setSeriesFiles([])
     setError(null)
   }
 
+  function pickSeries(fileList) {
+    if (!fileList || fileList.length === 0) return
+    const arr = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.dcm'))
+    if (arr.length === 0) {
+      setError('No .dcm files found in the selection.')
+      return
+    }
+    setSeriesFiles(arr)
+    setFile(null)
+    setError(null)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    if (mode === 'series') {
+      pickSeries(e.dataTransfer.files)
+    } else {
+      pickSingle(e.dataTransfer.files[0])
+    }
+  }
+
   async function handleUpload() {
-    if (!file) return
     setUploading(true)
     setError(null)
     try {
-      const meta = await api.upload(file)
+      let meta
+      if (mode === 'series') {
+        meta = await api.uploadSeries(seriesFiles)
+      } else {
+        meta = await api.upload(file)
+      }
       onUpload(meta.image_id, meta)
     } catch (e) {
       setError(e.message)
@@ -32,6 +67,8 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
       setUploading(false)
     }
   }
+
+  const readyToUpload = mode === 'series' ? seriesFiles.length > 0 : !!file
 
   const shape = metadata?.shape || []
   const sp    = metadata?.spacing || []
@@ -46,20 +83,69 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
         </p>
       </div>
 
+      {/* Mode toggle */}
+      {!imageId && (
+        <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.25rem' }}>
+          {[
+            { id: 'single', label: '🗂 Single File' },
+            { id: 'series', label: '📚 DICOM Series' },
+          ].map(m => (
+            <button
+              key={m.id}
+              className={`btn ${mode === m.id ? 'btn-primary' : 'btn-outline'} btn-sm`}
+              onClick={() => { setMode(m.id); setFile(null); setSeriesFiles([]); setError(null) }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Drop zone */}
       {!imageId && (
         <div
           className={`drop-zone${dragging ? ' drag-active' : ''}`}
           style={{ maxWidth: 560 }}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => mode === 'series' ? seriesRef.current?.click() : singleRef.current?.click()}
           onDragOver={e => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); pickFile(e.dataTransfer.files[0]) }}
+          onDrop={handleDrop}
         >
-          <input ref={fileRef} type="file" accept={ACCEPTED} hidden onChange={e => pickFile(e.target.files[0])} />
-          <div className="dz-icon">🏥</div>
-          <div className="dz-text">{file ? `Ready: ${file.name}` : 'Drop a file here, or click to browse'}</div>
-          <div className="dz-hint">PNG · JPG · DICOM (.dcm) · NIfTI (.nii / .nii.gz)</div>
+          {/* Single-file input */}
+          <input
+            ref={singleRef}
+            type="file"
+            accept={ACCEPTED_SINGLE}
+            hidden
+            onChange={e => pickSingle(e.target.files[0])}
+          />
+          {/* Series multi-file input */}
+          <input
+            ref={seriesRef}
+            type="file"
+            accept={ACCEPTED_SERIES}
+            multiple
+            hidden
+            onChange={e => pickSeries(e.target.files)}
+          />
+
+          <div className="dz-icon">{mode === 'series' ? '📚' : '🏥'}</div>
+
+          {mode === 'series' ? (
+            <>
+              <div className="dz-text">
+                {seriesFiles.length > 0
+                  ? `${seriesFiles.length} .dcm files selected`
+                  : 'Drop .dcm files here, or click to browse'}
+              </div>
+              <div className="dz-hint">Select all slices of one DICOM series at once</div>
+            </>
+          ) : (
+            <>
+              <div className="dz-text">{file ? `Ready: ${file.name}` : 'Drop a file here, or click to browse'}</div>
+              <div className="dz-hint">PNG · JPG · DICOM (.dcm) · NIfTI (.nii / .nii.gz)</div>
+            </>
+          )}
         </div>
       )}
 
@@ -71,8 +157,12 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
 
       {!imageId && (
         <div style={{ marginTop: '1rem' }}>
-          <button className="btn btn-primary" disabled={!file || uploading} onClick={handleUpload}>
-            {uploading ? <><span className="spinner" /> Uploading…</> : '📤 Upload'}
+          <button className="btn btn-primary" disabled={!readyToUpload || uploading} onClick={handleUpload}>
+            {uploading
+              ? <><span className="spinner" /> Uploading…</>
+              : mode === 'series'
+                ? `📤 Upload Series (${seriesFiles.length} files)`
+                : '📤 Upload'}
           </button>
         </div>
       )}
@@ -98,6 +188,12 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
                 <span className="meta-val">{shape.join(' × ')} px</span>
                 <span className="meta-key">3-D Volume</span>
                 <span className="meta-val">{metadata.is_3d ? 'Yes' : 'No'}</span>
+                {metadata.n_slices != null && (
+                  <>
+                    <span className="meta-key">Slices</span>
+                    <span className="meta-val">{metadata.n_slices}</span>
+                  </>
+                )}
                 <span className="meta-key">Voxel spacing</span>
                 <span className="meta-val">{sp.map(s => s.toFixed(3)).join(' × ')} mm</span>
                 {metadata.is_3d && (
@@ -117,7 +213,7 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
               </div>
             </div>
             <div className="card-footer">
-              <button className="btn btn-outline btn-sm" onClick={() => { setFile(null); setError(null); onReset?.() }}>
+              <button className="btn btn-outline btn-sm" onClick={() => { setFile(null); setSeriesFiles([]); setError(null); onReset?.() }}>
                 ↺ Upload a different file
               </button>
             </div>
