@@ -24,7 +24,8 @@ from api.features import router as features_router
 from api.cluster  import router as cluster_router
 from api.report   import router as report_router
 from api.patchify import router as patchify_router
-from api.export   import router as export_router
+from api.export    import router as export_router
+from api.register  import router as register_router
 
 # ── Legacy Core Imaging Lab router (v0.1, kept for backward compatibility) ─
 from labs.core_imaging.routes import router as core_imaging_router
@@ -74,7 +75,8 @@ app.include_router(features_router, prefix="/api",            tags=["Features"])
 app.include_router(cluster_router,  prefix="/api",            tags=["ML / Clustering"])
 app.include_router(report_router,   prefix="/api",            tags=["Analysis Report"])
 app.include_router(patchify_router, prefix="/api",            tags=["Patchify"])
-app.include_router(export_router,   prefix="/api",            tags=["Export"])
+app.include_router(export_router,    prefix="/api",            tags=["Export"])
+app.include_router(register_router,  prefix="/api",            tags=["Registration"])
 
 # Legacy v0.1 endpoints (still functional)
 app.include_router(core_imaging_router, prefix="/api/core-imaging", tags=["Core Imaging Lab (legacy)"])

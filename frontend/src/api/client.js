@@ -68,6 +68,10 @@ export const api = {
     return _req('POST', '/api/patchify', { image_id: imageId, patch_size: patchSize, stride })
   },
 
+  register(imageId, transformType, params = {}) {
+    return _req('POST', '/api/register', { image_id: imageId, transform_type: transformType, ...params })
+  },
+
   exportUrl: {
     png: (imageId) => `${BASE}/api/export/${imageId}/png`,
     csv: (imageId) => `${BASE}/api/export/${imageId}/csv`,

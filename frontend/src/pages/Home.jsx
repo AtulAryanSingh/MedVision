@@ -34,6 +34,12 @@ export default function Home({ onNavigate }) {
       desc: 'Slice a 3-D volume into cubic patches with configurable size and stride. Download as NPZ.',
     },
     {
+      id: 'register',
+      icon: '📐',
+      name: 'Registration & Resampling',
+      desc: 'Apply geometric transforms (translate, rotate, zoom, affine) with bicubic or nearest-neighbour interpolation.',
+    },
+    {
       id: 'dl',
       icon: '🧬',
       name: 'Deep Learning',

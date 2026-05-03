@@ -19,6 +19,7 @@ patchify, or export in **any order, on demand**. No forced pipeline.
 | 📊 **QC & Plots** | Intensity histogram, CDF, statistical features (mean/std/entropy/skewness/kurtosis), percentile strip, W/L reference table |
 | ⚗️ **Tools** | Modular independent tools: Gaussian, Median, Sobel, CDF-threshold, Erosion/Dilation/Opening/Closing, Connected Components, Bounding Boxes |
 | 🧩 **Patchify 3D** | Dice a 3-D volume into cubic patches; configurable size & stride; download .npz (patches + coords + spacing) |
+| 📐 **Registration** | Apply geometric transforms (Translation · Rotation · Zoom · Affine) with bicubic or nearest-neighbour interpolation |
 | 🧬 **Deep Learning** | Recommended DL workflow + downloadable Google Colab notebook (3-D CNN / MONAI U-Net skeleton) |
 | 📥 **Downloads** | Export as PNG, NumPy array (.npy), component metrics CSV (.csv) |
 
@@ -64,6 +65,7 @@ MedVision/
     │   │   ├── QCPlots.jsx      # Histogram + CDF + stats
     │   │   ├── Tools.jsx        # Modular toolbox
     │   │   ├── Patchify.jsx     # 3-D patch extraction
+│   │   │   ├── Registration.jsx # Translation · Rotation · Zoom · Affine
     │   │   ├── DeepLearning.jsx # DL workflow + Colab export
     │   │   └── Downloads.jsx    # Export centre
     │   └── styles/index.css     # White clinical theme
@@ -131,6 +133,7 @@ npm run preview        # serve the production build locally
 | `POST` | `/api/cluster` | KMeans + PCA segmentation |
 | `GET` | `/api/report/{id}` | Full analysis report JSON |
 | `POST` | `/api/patchify` | Extract 3-D patches → NPZ |
+| `POST` | `/api/register` | Apply geometric transform (translate/rotate/zoom/affine) |
 | `GET` | `/api/export/{id}/png` | Download middle slice as PNG |
 | `GET` | `/api/export/{id}/npy` | Download full array as .npy (base64) |
 | `GET` | `/api/export/{id}/csv` | Download component metrics as CSV |

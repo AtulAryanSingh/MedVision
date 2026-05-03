@@ -7,6 +7,7 @@ import Tools         from './pages/Tools.jsx'
 import Patchify      from './pages/Patchify.jsx'
 import DeepLearning  from './pages/DeepLearning.jsx'
 import Downloads     from './pages/Downloads.jsx'
+import Registration  from './pages/Registration.jsx'
 
 const NAV = [
   { id: 'home',      icon: '🏠', label: 'Home',          section: 'main' },
@@ -15,6 +16,7 @@ const NAV = [
   { id: 'qc',        icon: '📊', label: 'QC & Plots',    section: 'viewer' },
   { id: 'tools',     icon: '⚗️',  label: 'Tools',        section: 'tools' },
   { id: 'patchify',  icon: '🧩', label: 'Patchify 3D',   section: 'tools' },
+  { id: 'register',  icon: '📐', label: 'Registration',  section: 'tools' },
   { id: 'dl',        icon: '🧬', label: 'Deep Learning', section: 'tools' },
   { id: 'exports',   icon: '📥', label: 'Downloads',     section: 'exports' },
 ]
@@ -41,6 +43,7 @@ export default function App() {
       case 'qc':        return <QCPlots      {...props} />
       case 'tools':     return <Tools        {...props} />
       case 'patchify':  return <Patchify     {...props} />
+      case 'register':  return <Registration {...props} />
       case 'dl':        return <DeepLearning {...props} />
       case 'exports':   return <Downloads    {...props} />
       default:          return <Home         onNavigate={setPage} />

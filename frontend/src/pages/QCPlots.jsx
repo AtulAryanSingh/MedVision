@@ -56,7 +56,7 @@ export default function QCPlots({ imageId }) {
   return (
     <div className="page">
       <div className="page-header">
-        <h2 className="page-title">📊 QC &amp; Plots</h2>
+        <h2 className="page-title">📊 QC & Plots</h2>
         <p className="page-desc">
           Intensity histogram, cumulative distribution function (CDF), statistical
           feature summary, and window/level presets for contrast reference.
