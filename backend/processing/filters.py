@@ -80,7 +80,7 @@ def apply_median(arr: np.ndarray, kernel_size: int = 5) -> np.ndarray:
     return filtered.astype(np.float32)
 
 
-
+def apply_sobel(arr: np.ndarray) -> np.ndarray:
     """
     Detect edges using Sobel gradient operators.
 
