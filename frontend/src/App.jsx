@@ -28,6 +28,12 @@ export default function App() {
   const [imageId,  setImageId]  = useState(null)
   const [metadata, setMetadata] = useState(null)
 
+  function handleReset() {
+    setImageId(null)
+    setMetadata(null)
+    setPage('data')
+  }
+
   function handleUpload(id, meta) {
     setImageId(id)
     setMetadata(meta)
@@ -38,7 +44,7 @@ export default function App() {
     const props = { imageId, metadata }
     switch (page) {
       case 'home':      return <Home         onNavigate={setPage} />
-      case 'data':      return <DataManager  {...props} onUpload={handleUpload} />
+      case 'data':      return <DataManager  {...props} onUpload={handleUpload} onReset={handleReset} />
       case 'workspace': return <Workspace    {...props} />
       case 'qc':        return <QCPlots      {...props} />
       case 'tools':     return <Tools        {...props} />

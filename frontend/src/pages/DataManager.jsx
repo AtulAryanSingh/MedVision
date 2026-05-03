@@ -6,7 +6,7 @@ import { api } from '../api/client.js'
 
 const ACCEPTED = '.png,.jpg,.jpeg,.dcm,.nii,.gz'
 
-export default function DataManager({ imageId, metadata, onUpload }) {
+export default function DataManager({ imageId, metadata, onUpload, onReset }) {
   const [file,      setFile]      = useState(null)
   const [dragging,  setDragging]  = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -117,7 +117,7 @@ export default function DataManager({ imageId, metadata, onUpload }) {
               </div>
             </div>
             <div className="card-footer">
-              <button className="btn btn-outline btn-sm" onClick={() => { setFile(null); setError(null); window.location.reload() }}>
+              <button className="btn btn-outline btn-sm" onClick={() => { setFile(null); setError(null); onReset?.() }}>
                 ↺ Upload a different file
               </button>
             </div>
