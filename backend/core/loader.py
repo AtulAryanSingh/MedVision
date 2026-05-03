@@ -162,7 +162,7 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         sp_z = float(getattr(first_ds, "SliceThickness", 1.0))
 
     if sp_z < 1e-6:
-        sp_z = float(getattr(first_ds, "SliceThickness", 1.0)) or 1.0
+        sp_z = float(getattr(first_ds, "SliceThickness", 0.0)) or 1.0
 
     spacing = [sp_z, sp_y, sp_x]   # ordered (D, H, W) = (z, y, x)
 

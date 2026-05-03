@@ -188,7 +188,7 @@ export default function DataManager({ imageId, metadata, onUpload, onReset }) {
                 <span className="meta-val">{shape.join(' × ')} px</span>
                 <span className="meta-key">3-D Volume</span>
                 <span className="meta-val">{metadata.is_3d ? 'Yes' : 'No'}</span>
-                {metadata.n_slices != null && (
+                {metadata.n_slices !== null && metadata.n_slices !== undefined && (
                   <>
                     <span className="meta-key">Slices</span>
                     <span className="meta-val">{metadata.n_slices}</span>
