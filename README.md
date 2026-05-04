@@ -174,6 +174,86 @@ spacing = data["spacing"]   # float32  (3,)     mm/voxel
 
 ---
 
+## Backend Testing
+
+The backend has a comprehensive pytest-based test suite covering unit tests for
+core modules and integration tests for all FastAPI endpoints.
+
+### Test Layout
+
+```
+backend/
+└── tests/
+    ├── conftest.py                # shared fixtures (TestClient, synthetic data, auth)
+    ├── unit/
+    │   ├── test_loader.py         # core/loader.py
+    │   ├── test_filters.py        # processing/filters.py
+    │   ├── test_histogram.py      # processing/histogram.py
+    │   ├── test_morphology.py     # processing/morphology.py
+    │   ├── test_extractor.py      # features/extractor.py
+    │   └── test_image_cache.py    # core/image_cache.py (LRU cache)
+    └── integration/
+        ├── test_health.py         # GET /  and  GET /health
+        ├── test_auth.py           # POST /api/auth/login  + JWT validation
+        ├── test_upload.py         # POST /api/upload  (PNG, NIfTI, error cases)
+        └── test_process.py        # POST /api/process (all 10 processing tools)
+```
+
+### Install Test Dependencies
+
+```bash
+cd backend
+pip install -r requirements.txt
+pip install pytest pytest-asyncio httpx
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `JWT_SECRET` | random (dev only) | HMAC-SHA256 signing secret. Set for stable tokens. |
+
+> **Tip:** `conftest.py` sets `JWT_SECRET` via `os.environ.setdefault` so you
+> don't need to export it manually for tests; the value in your environment
+> (if any) takes priority.
+
+### Run All Tests
+
+```bash
+cd backend
+pytest
+```
+
+### Run Only Unit Tests
+
+```bash
+cd backend
+pytest tests/unit/ -v
+```
+
+### Run Only Integration Tests
+
+```bash
+cd backend
+pytest tests/integration/ -v
+```
+
+### Run with Coverage (optional)
+
+```bash
+pip install pytest-cov
+pytest --cov=. --cov-report=term-missing
+```
+
+### CI Notes
+
+- No GPU required — all tests run on CPU with synthetic data.
+- No external services — NIfTI/PNG test data is generated in-memory or in `tmp_path`.
+- Integration tests redirect upload/cache directories to pytest's temporary
+  directories so the real `backend/data/` folder is never written to during tests.
+
+---
+
 ## Security Notes
 
 - `image_id` is validated as a UUID (parsed with `uuid.UUID()` and re-serialised before any path operation) to prevent path-traversal attacks.
