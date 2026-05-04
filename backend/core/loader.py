@@ -29,7 +29,7 @@ import numpy as np
 #   - 3-D volumes are represented in NumPy as (Z, Y, X) == (D, H, W)
 #   - spacing is stored in metadata as [sp_z, sp_y, sp_x] (mm)
 #
-# This makes all downstream consumers (FOV, MPR, patchify, etc.) consistent.
+# This keeps FOV/MPR logic consistent everywhere.
 
 def _canon_xyz_from_array_and_spacing(
     arr: np.ndarray,
@@ -49,7 +49,7 @@ def _canon_xyz_from_array_and_spacing(
         Spacing values as read from the file header.
     spacing_order : str
         - "zyx": spacing is [sp_z, sp_y, sp_x]
-        - "xyz": spacing is [sp_x, sp_y, sp_z]  (common in some libraries / headers)
+        - "xyz": spacing is [sp_x, sp_y, sp_z]  (common in NIfTI headers)
 
     Returns
     -------
@@ -75,14 +75,14 @@ def _canon_xyz_from_array_and_spacing(
     if arr.ndim >= 3 and not is_color_2d:
         sizeZ, sizeY, sizeX = int(arr.shape[0]), int(arr.shape[1]), int(arr.shape[2])
     else:
-        # Treat 2-D images as a single-slice volume for consistent metadata math
         sizeZ, sizeY, sizeX = 1, int(arr.shape[0]), int(arr.shape[1])
 
-    # Basic sanity
+    # Sanity
     if not np.isfinite([sp_x, sp_y, sp_z]).all():
         sp_x = sp_x if np.isfinite(sp_x) else 1.0
         sp_y = sp_y if np.isfinite(sp_y) else 1.0
         sp_z = sp_z if np.isfinite(sp_z) else 1.0
+
     if abs(sp_x) < 1e-12: sp_x = 1.0
     if abs(sp_y) < 1e-12: sp_y = 1.0
     if abs(sp_z) < 1e-12: sp_z = 1.0
@@ -98,35 +98,86 @@ def _canon_xyz_from_array_and_spacing(
     }
 
 
+# ── DICOM geometry helpers ────────────────────────────────────────────────────
+
+def _try_float_list(x: Any, n: int) -> Optional[List[float]]:
+    """Try to parse a DICOM multi-value into a list[float] of length >= n."""
+    if x is None:
+        return None
+    try:
+        xs = [float(v) for v in x]
+        return xs if len(xs) >= n else None
+    except Exception:
+        return None
+
+
+def _dicom_slice_position_scalar(ds) -> Tuple[Optional[float], bool]:
+    """
+    Return a scalar that increases along the slice axis.
+
+    If ImageOrientationPatient is present, use dot(IPP, normal) where normal is
+    cross(row_cosines, col_cosines). This is robust for oblique series.
+
+    If IOP is missing/unusable, fall back to IPP[2] (assumes axial-ish data).
+
+    Returns
+    -------
+    (pos_scalar, has_geometry)
+      - has_geometry=True means we used normal projection
+    """
+    ipp = _try_float_list(getattr(ds, "ImagePositionPatient", None), 3)
+    if ipp is None:
+        return None, False
+
+    iop = _try_float_list(getattr(ds, "ImageOrientationPatient", None), 6)
+    if iop is None:
+        return float(ipp[2]), False
+
+    row = np.array(iop[:3], dtype=np.float64)
+    col = np.array(iop[3:6], dtype=np.float64)
+    nrm = np.cross(row, col)
+    nrm_norm = float(np.linalg.norm(nrm))
+    if nrm_norm < 1e-8:
+        return float(ipp[2]), False
+
+    nrm = nrm / nrm_norm
+    return float(np.dot(np.array(ipp, dtype=np.float64), nrm)), True
+
+
+def _dicom_get_pixel_spacing_yx(ds) -> Tuple[float, float]:
+    """
+    DICOM PixelSpacing is [row_spacing, col_spacing] == [Y, X] in mm.
+    """
+    ps = getattr(ds, "PixelSpacing", None)
+    try:
+        if ps is not None and len(ps) >= 2:
+            return float(ps[0]), float(ps[1])
+    except Exception:
+        pass
+    return 1.0, 1.0
+
+
+def _dicom_get_spacing_z(ds) -> float:
+    """
+    Get Z spacing for single-slice DICOM where inter-slice spacing can't be derived.
+    Preference:
+      SpacingBetweenSlices > SliceThickness > 1.0
+    """
+    for tag in ("SpacingBetweenSlices", "SliceThickness"):
+        try:
+            v = float(getattr(ds, tag, 0.0) or 0.0)
+            if v > 1e-6:
+                return v
+        except Exception:
+            pass
+    return 1.0
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a medical image from *path* and return (array, metadata).
-
-    What it does:
-      - If *path* is a directory it is treated as a DICOM series and
-        delegated to load_dicom_series().
-      - Otherwise inspects the file extension to route to the correct
-        format-specific loader.
-
-    Why it exists:
-      All API endpoints need a consistent, format-agnostic way to obtain a
-      NumPy array from whatever the user uploaded.
-
-    Parameters
-    ----------
-    path : str
-        Absolute path to the image file or series directory on disk.
-
-    Returns
-    -------
-    array : np.ndarray
-        float32 array of shape (H, W), (H, W, C), or (D, H, W) depending
-        on the format.
-    metadata : dict
-        Keys: file_type, shape, dtype_str, ndim, intensity_min,
-              intensity_max, spacing, modality, is_3d, extra_meta.
     """
     if os.path.isdir(path):
         return load_dicom_series(path)
@@ -148,19 +199,11 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
       volume shape: (Z, Y, X)
       spacing meta: [sp_z, sp_y, sp_x]  in mm
 
-    What it does:
-      1. Scans *directory* for .dcm files.
-      2. Header-only pass (stop_before_pixels=True) to extract
-         SeriesInstanceUID, InstanceNumber, and ImagePositionPatient.
-      3. Groups slices by SeriesInstanceUID; selects the largest group.
-      4. Sorts slices by InstanceNumber (primary) or
-         ImagePositionPatient[2] z-coordinate (fallback).
-      5. Pre-allocates a float32 (D, H, W) array and fills it one slice at
-         a time so only one slice of pixel data is in memory at once.
-      6. Derives voxel spacing: PixelSpacing (y, x) + slice gap from
-         ImagePositionPatient or SliceThickness.
-      7. Passes spacing through the canonical helper so metadata is always
-         stored as [z,y,x] and downstream MPR/FOV are correct.
+    Key robustness:
+      - Uses ImageOrientationPatient + ImagePositionPatient to compute the true slice
+        normal and sort slices by dot(IPP, normal) when possible (oblique-safe).
+      - Derives sp_z from the robust median of consecutive slice position deltas.
+      - Falls back to tags (SpacingBetweenSlices / SliceThickness) if geometry is absent.
     """
     try:
         import pydicom
@@ -196,64 +239,56 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 
     uid, group = max(groups.items(), key=lambda kv: len(kv[1]))
 
-    # ── 4. Sort slices ────────────────────────────────────────────────────
-    def _sort_key(item: Tuple[str, Any]) -> Tuple[int, float]:
-        _, ds = item
+    # ── 4. Sort slices (prefer geometry) ──────────────────────────────────
+    pos_items: List[Tuple[str, Any, Optional[float], bool, Any]] = []
+    for p, ds in group:
         inst = getattr(ds, "InstanceNumber", None)
-        if inst is not None:
-            try:
-                return (0, float(inst))
-            except Exception:
-                pass
-        ipp = getattr(ds, "ImagePositionPatient", None)
-        if ipp is not None:
-            try:
-                return (1, float(ipp[2]))
-            except Exception:
-                pass
-        return (2, 0.0)
+        pos, has_geom = _dicom_slice_position_scalar(ds)
+        pos_items.append((p, ds, pos, has_geom, inst))
 
-    group.sort(key=_sort_key)
-    sorted_paths = [p for p, _ in group]
+    geom_count = sum(1 for _, _, pos, has_geom, _ in pos_items if pos is not None and has_geom)
+    use_geom = geom_count >= max(2, int(0.7 * len(pos_items)))
 
-    # ── 5. Derive spacing from geometry (DICOM: PixelSpacing = [Y,X]) ─────
-    first_ds = group[0][1]
-
-    ps = getattr(first_ds, "PixelSpacing", [1.0, 1.0])
-    try:
-        sp_y, sp_x = float(ps[0]), float(ps[1])
-    except Exception:
-        sp_y, sp_x = 1.0, 1.0
-
-    # Prefer actual inter-slice distance from IPP if available; else fall back
-    if len(group) > 1:
-        ipp0 = getattr(group[0][1], "ImagePositionPatient", None)
-        ipp1 = getattr(group[1][1], "ImagePositionPatient", None)
-        if ipp0 is not None and ipp1 is not None:
-            try:
-                sp_z = abs(float(ipp1[2]) - float(ipp0[2]))
-            except Exception:
-                sp_z = 0.0
-        else:
-            sp_z = 0.0
+    if use_geom:
+        # Sort by projected position along slice normal; stable tie-breaker by SOPInstanceUID
+        pos_items.sort(key=lambda t: (
+            t[2] is None,
+            t[2],
+            str(getattr(t[1], "SOPInstanceUID", "")),
+        ))
     else:
-        sp_z = 0.0
+        # Fallback: InstanceNumber primary; then position scalar (which may be IPP[2]); then stable UID
+        def _fallback_key(t):
+            _, ds, pos, _, inst = t
+            if inst is not None:
+                try:
+                    return (0, float(inst))
+                except Exception:
+                    pass
+            if pos is not None:
+                return (1, float(pos))
+            return (2, 0.0)
 
-    if sp_z < 1e-6:
-        # Prefer SpacingBetweenSlices when present; else SliceThickness; else 1.0
-        try:
-            sp_z = float(getattr(first_ds, "SpacingBetweenSlices", 0.0) or 0.0)
-        except Exception:
-            sp_z = 0.0
-        if sp_z < 1e-6:
-            try:
-                sp_z = float(getattr(first_ds, "SliceThickness", 1.0) or 1.0)
-            except Exception:
-                sp_z = 1.0
-        if sp_z < 1e-6:
-            sp_z = 1.0
+        pos_items.sort(key=_fallback_key)
 
-    # spacing candidate is already [Z,Y,X] for project convention
+    sorted_paths = [p for (p, _, _, _, _) in pos_items]
+    sorted_pos = [pos for (_, _, pos, _, _) in pos_items if pos is not None]
+
+    # ── 5. Derive spacing (Y,X from PixelSpacing; Z from geometry or tags) ─
+    first_ds = pos_items[0][1]
+    sp_y, sp_x = _dicom_get_pixel_spacing_yx(first_ds)
+
+    sp_z = 0.0
+    if len(sorted_pos) >= 2:
+        diffs = np.diff(np.array(sorted_pos, dtype=np.float64))
+        diffs = np.abs(diffs)
+        diffs = diffs[diffs > 1e-6]  # remove duplicates/zeros
+        if diffs.size > 0:
+            sp_z = float(np.median(diffs))
+
+    if sp_z <= 1e-6:
+        sp_z = _dicom_get_spacing_z(first_ds)
+
     spacing_candidate_zyx = [sp_z, sp_y, sp_x]
 
     # ── 6. Pre-allocate and fill slice by slice ───────────────────────────
@@ -271,7 +306,7 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         if sl.shape[:2] == (H, W):
             volume[i] = sl
         else:
-            # Resize inconsistent slice to match first (rare edge case)
+            # NOTE: resizing slices changes physical geometry; consider skipping/erroring in strict mode.
             volume[i] = cv2.resize(sl, (W, H), interpolation=cv2.INTER_LINEAR)
 
     # ── 7. Canonicalize spacing to [Z,Y,X] ────────────────────────────────
@@ -288,13 +323,6 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         "n_slices":            D,
         "window_center":       str(getattr(first_ds, "WindowCenter", "")),
         "window_width":        str(getattr(first_ds, "WindowWidth", "")),
-        # Helpful strict axis mapping for downstream debugging/UI if desired
-        "size_x":              canon["sizeX"],
-        "size_y":              canon["sizeY"],
-        "size_z":              canon["sizeZ"],
-        "spacing_x":           canon["spacingX"],
-        "spacing_y":           canon["spacingY"],
-        "spacing_z":           canon["spacingZ"],
     }
     meta["n_slices"] = D
     return volume, meta
@@ -305,6 +333,9 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 def _load_standard(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a 2-D standard image (PNG, JPG, BMP) with OpenCV.
+
+    For 2-D, we provide a safe canonical spacing_zyx = [1,1,1] so downstream
+    logic that expects len(spacing)>=3 never breaks.
     """
     raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if raw is None:
@@ -316,16 +347,21 @@ def _load_standard(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         arr = raw
     arr = arr.astype(np.float32)
 
-    return arr, _base_meta(arr, "png_jpg", [1.0, 1.0], "unknown")
+    spacing_candidate_zyx = [1.0, 1.0, 1.0]
+    canon = _canon_xyz_from_array_and_spacing(arr, spacing_candidate_zyx, spacing_order="zyx")
+    spacing = canon["spacing_zyx"]
+
+    return arr, _base_meta(arr, "png_jpg", spacing, "unknown")
 
 
 def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a single DICOM file with pydicom and apply rescale slope/intercept.
 
-    Critical fix:
-      Parse spacing as [SliceThickness(or SpacingBetweenSlices), PixelSpacing[0], PixelSpacing[1]]
-      == [Z, Y, X] for this project's canonical metadata.
+    Critical axis mapping:
+      - PixelSpacing -> (Y,X)
+      - SliceThickness/SpacingBetweenSlices -> Z
+      - Store metadata spacing canonically as [Z,Y,X]
     """
     try:
         import pydicom
@@ -335,25 +371,8 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     ds = pydicom.dcmread(path)
     arr = _apply_rescale(ds)
 
-    # DICOM PixelSpacing is [row, col] == [Y, X]
-    ps = getattr(ds, "PixelSpacing", [1.0, 1.0])
-    try:
-        sp_y, sp_x = float(ps[0]), float(ps[1])
-    except Exception:
-        sp_y, sp_x = 1.0, 1.0
-
-    # Z spacing: prefer SpacingBetweenSlices if present; else SliceThickness
-    try:
-        sp_z = float(getattr(ds, "SpacingBetweenSlices", 0.0) or 0.0)
-    except Exception:
-        sp_z = 0.0
-    if sp_z < 1e-6:
-        try:
-            sp_z = float(getattr(ds, "SliceThickness", 1.0) or 1.0)
-        except Exception:
-            sp_z = 1.0
-    if sp_z < 1e-6:
-        sp_z = 1.0
+    sp_y, sp_x = _dicom_get_pixel_spacing_yx(ds)
+    sp_z = _dicom_get_spacing_z(ds)
 
     spacing_candidate_zyx = [sp_z, sp_y, sp_x]
     canon = _canon_xyz_from_array_and_spacing(arr, spacing_candidate_zyx, spacing_order="zyx")
@@ -366,12 +385,6 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         "series_description": str(getattr(ds, "SeriesDescription", "")),
         "window_center":      str(getattr(ds, "WindowCenter", "")),
         "window_width":       str(getattr(ds, "WindowWidth", "")),
-        "size_x":             canon["sizeX"],
-        "size_y":             canon["sizeY"],
-        "size_z":             canon["sizeZ"],
-        "spacing_x":          canon["spacingX"],
-        "spacing_y":          canon["spacingY"],
-        "spacing_z":          canon["spacingZ"],
     }
     return arr, meta
 
@@ -390,10 +403,11 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a NIfTI image (.nii or .nii.gz) with nibabel.
 
-    Critical fix:
-      nibabel zooms are typically (X, Y, Z) while we transpose array to (Z, Y, X).
-      Therefore we must reorder spacing to match the transposed array before storing
-      canonical metadata as [Z, Y, X].
+    Correct axis/spacing mapping:
+      - nibabel array is (X,Y,Z)
+      - zooms are (X,Y,Z)
+      - we transpose to (Z,Y,X)
+      - therefore spacing becomes [Z,Y,X] = [zoomZ, zoomY, zoomX]
     """
     try:
         import nibabel as nib
@@ -403,28 +417,21 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     img = nib.load(path)
     arr = img.get_fdata().astype(np.float32)
 
-    zooms = img.header.get_zooms()
-    # zooms are usually (x, y, z)
-    sp_x, sp_y, sp_z = (list(zooms[:3]) + [1.0, 1.0, 1.0])[:3]
+    zooms = list(img.header.get_zooms())
+    sp_x = float(zooms[0]) if len(zooms) > 0 else 1.0
+    sp_y = float(zooms[1]) if len(zooms) > 1 else 1.0
+    sp_z = float(zooms[2]) if len(zooms) > 2 else 1.0
 
-    # nibabel returns (x, y, z); reorder to (z, y, x) = (D, H, W)
+    # nibabel returns (x, y, z); reorder to (z, y, x) for this project
     if arr.ndim == 3:
         arr = np.transpose(arr, (2, 1, 0))
 
-    # spacing_source is xyz, canonical helper returns spacing_zyx
-    canon = _canon_xyz_from_array_and_spacing(arr, [sp_x, sp_y, sp_z], spacing_order="xyz")
+    spacing_candidate_zyx = [sp_z, sp_y, sp_x]
+    canon = _canon_xyz_from_array_and_spacing(arr, spacing_candidate_zyx, spacing_order="zyx")
     spacing = canon["spacing_zyx"]
 
     meta = _base_meta(arr, "nifti", spacing, "MRI")
-    meta["extra_meta"] = {
-        "affine": img.affine.tolist(),
-        "size_x": canon["sizeX"],
-        "size_y": canon["sizeY"],
-        "size_z": canon["sizeZ"],
-        "spacing_x": canon["spacingX"],
-        "spacing_y": canon["spacingY"],
-        "spacing_z": canon["spacingZ"],
-    }
+    meta["extra_meta"] = {"affine": img.affine.tolist()}
     return arr, meta
 
 
@@ -452,6 +459,8 @@ def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) ->
 def get_slice_2d(arr: np.ndarray, axis: int, index: Optional[int] = None) -> np.ndarray:
     """
     Extract a 2-D slice from *arr* along *axis* at position *index*.
+
+    axis: 0=axial (Z), 1=coronal (Y), 2=sagittal (X) for (Z,Y,X) volumes.
     """
     if arr.ndim == 2:
         return arr
@@ -459,7 +468,7 @@ def get_slice_2d(arr: np.ndarray, axis: int, index: Optional[int] = None) -> np.
         # 2-D colour image stored as (H, W, C) — return greyscale projection
         return arr[:, :, 0] if arr.shape[2] == 1 else arr
 
-    # True volumetric (D, H, W)
+    # True volumetric (Z, Y, X)
     dim_size = arr.shape[axis]
     idx = dim_size // 2 if index is None else int(np.clip(index, 0, dim_size - 1))
     if axis == 0:
