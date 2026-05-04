@@ -24,6 +24,80 @@ import cv2
 import numpy as np
 
 
+# ── Canonical axis helper ─────────────────────────────────────────────────────
+# Project-wide convention:
+#   - 3-D volumes are represented in NumPy as (Z, Y, X) == (D, H, W)
+#   - spacing is stored in metadata as [sp_z, sp_y, sp_x] (mm)
+#
+# This makes all downstream consumers (FOV, MPR, patchify, etc.) consistent.
+
+def _canon_xyz_from_array_and_spacing(
+    arr: np.ndarray,
+    spacing: List[float],
+    *,
+    spacing_order: str,
+) -> Dict[str, Any]:
+    """
+    Convert shape + spacing into strict (sizeX,sizeY,sizeZ) and (spacingX,spacingY,spacingZ),
+    and return canonical spacing_zyx = [sp_z, sp_y, sp_x].
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Loaded array. For 3-D volumes this project uses (Z,Y,X).
+    spacing : list[float]
+        Spacing values as read from the file header.
+    spacing_order : str
+        - "zyx": spacing is [sp_z, sp_y, sp_x]
+        - "xyz": spacing is [sp_x, sp_y, sp_z]  (common in some libraries / headers)
+
+    Returns
+    -------
+    dict with:
+      sizeX,sizeY,sizeZ (ints),
+      spacingX,spacingY,spacingZ (floats),
+      spacing_zyx (list[float] == [sp_z, sp_y, sp_x])
+    """
+    sp = [float(x) for x in (spacing or [])]
+    while len(sp) < 3:
+        sp.append(1.0)
+
+    order = spacing_order.lower().strip()
+    if order == "zyx":
+        sp_z, sp_y, sp_x = sp[0], sp[1], sp[2]
+    elif order == "xyz":
+        sp_x, sp_y, sp_z = sp[0], sp[1], sp[2]
+    else:
+        raise ValueError(f"Unknown spacing_order='{spacing_order}' (expected 'zyx' or 'xyz')")
+
+    # Determine whether this is a true 3-D volume (Z,Y,X) vs color image (H,W,C)
+    is_color_2d = (arr.ndim == 3 and arr.shape[2] in (1, 3, 4))
+    if arr.ndim >= 3 and not is_color_2d:
+        sizeZ, sizeY, sizeX = int(arr.shape[0]), int(arr.shape[1]), int(arr.shape[2])
+    else:
+        # Treat 2-D images as a single-slice volume for consistent metadata math
+        sizeZ, sizeY, sizeX = 1, int(arr.shape[0]), int(arr.shape[1])
+
+    # Basic sanity
+    if not np.isfinite([sp_x, sp_y, sp_z]).all():
+        sp_x = sp_x if np.isfinite(sp_x) else 1.0
+        sp_y = sp_y if np.isfinite(sp_y) else 1.0
+        sp_z = sp_z if np.isfinite(sp_z) else 1.0
+    if abs(sp_x) < 1e-12: sp_x = 1.0
+    if abs(sp_y) < 1e-12: sp_y = 1.0
+    if abs(sp_z) < 1e-12: sp_z = 1.0
+
+    return {
+        "sizeX": sizeX,
+        "sizeY": sizeY,
+        "sizeZ": sizeZ,
+        "spacingX": float(sp_x),
+        "spacingY": float(sp_y),
+        "spacingZ": float(sp_z),
+        "spacing_zyx": [float(sp_z), float(sp_y), float(sp_x)],
+    }
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
@@ -70,6 +144,10 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a directory of DICOM files as a 3-D volume.
 
+    Canonical output:
+      volume shape: (Z, Y, X)
+      spacing meta: [sp_z, sp_y, sp_x]  in mm
+
     What it does:
       1. Scans *directory* for .dcm files.
       2. Header-only pass (stop_before_pixels=True) to extract
@@ -81,21 +159,8 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
          a time so only one slice of pixel data is in memory at once.
       6. Derives voxel spacing: PixelSpacing (y, x) + slice gap from
          ImagePositionPatient or SliceThickness.
-
-    Why it exists:
-      Multi-file DICOM is the standard form for CT/MRI volumes.  Handling
-      100–1000 slices efficiently requires a header-first sort before any
-      pixel data is loaded.
-
-    Parameters
-    ----------
-    directory : str
-        Absolute path to a directory containing one or more .dcm files.
-
-    Returns
-    -------
-    array : np.ndarray  float32 (D, H, W)
-    metadata : dict     same schema as _base_meta plus series extra_meta
+      7. Passes spacing through the canonical helper so metadata is always
+         stored as [z,y,x] and downstream MPR/FOV are correct.
     """
     try:
         import pydicom
@@ -118,7 +183,6 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
             ds = pydicom.dcmread(p, stop_before_pixels=True)
             headers.append((p, ds))
         except Exception:
-            # Skip unreadable files silently; fail later if nothing remains
             continue
 
     if not headers:
@@ -137,34 +201,60 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         _, ds = item
         inst = getattr(ds, "InstanceNumber", None)
         if inst is not None:
-            return (0, float(inst))
+            try:
+                return (0, float(inst))
+            except Exception:
+                pass
         ipp = getattr(ds, "ImagePositionPatient", None)
         if ipp is not None:
-            return (1, float(ipp[2]))
+            try:
+                return (1, float(ipp[2]))
+            except Exception:
+                pass
         return (2, 0.0)
 
     group.sort(key=_sort_key)
     sorted_paths = [p for p, _ in group]
 
-    # ── 5. Derive spacing from geometry ───────────────────────────────────
+    # ── 5. Derive spacing from geometry (DICOM: PixelSpacing = [Y,X]) ─────
     first_ds = group[0][1]
-    ps = getattr(first_ds, "PixelSpacing", [1.0, 1.0])
-    sp_y, sp_x = float(ps[0]), float(ps[1])
 
+    ps = getattr(first_ds, "PixelSpacing", [1.0, 1.0])
+    try:
+        sp_y, sp_x = float(ps[0]), float(ps[1])
+    except Exception:
+        sp_y, sp_x = 1.0, 1.0
+
+    # Prefer actual inter-slice distance from IPP if available; else fall back
     if len(group) > 1:
         ipp0 = getattr(group[0][1], "ImagePositionPatient", None)
         ipp1 = getattr(group[1][1], "ImagePositionPatient", None)
         if ipp0 is not None and ipp1 is not None:
-            sp_z = abs(float(ipp1[2]) - float(ipp0[2]))
+            try:
+                sp_z = abs(float(ipp1[2]) - float(ipp0[2]))
+            except Exception:
+                sp_z = 0.0
         else:
-            sp_z = float(getattr(first_ds, "SliceThickness", 1.0))
+            sp_z = 0.0
     else:
-        sp_z = float(getattr(first_ds, "SliceThickness", 1.0))
+        sp_z = 0.0
 
     if sp_z < 1e-6:
-        sp_z = float(getattr(first_ds, "SliceThickness", 0.0)) or 1.0
+        # Prefer SpacingBetweenSlices when present; else SliceThickness; else 1.0
+        try:
+            sp_z = float(getattr(first_ds, "SpacingBetweenSlices", 0.0) or 0.0)
+        except Exception:
+            sp_z = 0.0
+        if sp_z < 1e-6:
+            try:
+                sp_z = float(getattr(first_ds, "SliceThickness", 1.0) or 1.0)
+            except Exception:
+                sp_z = 1.0
+        if sp_z < 1e-6:
+            sp_z = 1.0
 
-    spacing = [sp_z, sp_y, sp_x]   # ordered (D, H, W) = (z, y, x)
+    # spacing candidate is already [Z,Y,X] for project convention
+    spacing_candidate_zyx = [sp_z, sp_y, sp_x]
 
     # ── 6. Pre-allocate and fill slice by slice ───────────────────────────
     first_full = pydicom.dcmread(sorted_paths[0])
@@ -184,6 +274,10 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
             # Resize inconsistent slice to match first (rare edge case)
             volume[i] = cv2.resize(sl, (W, H), interpolation=cv2.INTER_LINEAR)
 
+    # ── 7. Canonicalize spacing to [Z,Y,X] ────────────────────────────────
+    canon = _canon_xyz_from_array_and_spacing(volume, spacing_candidate_zyx, spacing_order="zyx")
+    spacing = canon["spacing_zyx"]
+
     modality = str(getattr(first_ds, "Modality", "unknown"))
     meta = _base_meta(volume, "dicom_series", spacing, modality)
     meta["extra_meta"] = {
@@ -194,6 +288,13 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         "n_slices":            D,
         "window_center":       str(getattr(first_ds, "WindowCenter", "")),
         "window_width":        str(getattr(first_ds, "WindowWidth", "")),
+        # Helpful strict axis mapping for downstream debugging/UI if desired
+        "size_x":              canon["sizeX"],
+        "size_y":              canon["sizeY"],
+        "size_z":              canon["sizeZ"],
+        "spacing_x":           canon["spacingX"],
+        "spacing_y":           canon["spacingY"],
+        "spacing_z":           canon["spacingZ"],
     }
     meta["n_slices"] = D
     return volume, meta
@@ -204,21 +305,12 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 def _load_standard(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a 2-D standard image (PNG, JPG, BMP) with OpenCV.
-
-    What it does:
-      Reads the image unchanged, converts BGR colour to RGB if necessary,
-      and builds a basic metadata dict.
-
-    Why it exists:
-      PNG and JPEG are the most common non-clinical formats and require no
-      special parsing logic.
     """
     raw = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if raw is None:
         raise ValueError(f"OpenCV could not read: {path}")
 
     if raw.ndim == 3 and raw.shape[2] in (3, 4):
-        # Convert BGR(A) → RGB
         arr = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB if raw.shape[2] == 3 else cv2.COLOR_BGRA2RGBA)
     else:
         arr = raw
@@ -231,13 +323,9 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a single DICOM file with pydicom and apply rescale slope/intercept.
 
-    What it does:
-      Reads the pixel array, applies RescaleSlope and RescaleIntercept (so
-      CT images are in Hounsfield units), and extracts relevant DICOM tags.
-
-    Why it exists:
-      DICOM is the standard clinical format.  Correct HU conversion and tag
-      extraction are essential for meaningful downstream analysis.
+    Critical fix:
+      Parse spacing as [SliceThickness(or SpacingBetweenSlices), PixelSpacing[0], PixelSpacing[1]]
+      == [Z, Y, X] for this project's canonical metadata.
     """
     try:
         import pydicom
@@ -247,8 +335,29 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     ds = pydicom.dcmread(path)
     arr = _apply_rescale(ds)
 
+    # DICOM PixelSpacing is [row, col] == [Y, X]
     ps = getattr(ds, "PixelSpacing", [1.0, 1.0])
-    spacing = [float(ps[0]), float(ps[1]), float(getattr(ds, "SliceThickness", 1.0))]
+    try:
+        sp_y, sp_x = float(ps[0]), float(ps[1])
+    except Exception:
+        sp_y, sp_x = 1.0, 1.0
+
+    # Z spacing: prefer SpacingBetweenSlices if present; else SliceThickness
+    try:
+        sp_z = float(getattr(ds, "SpacingBetweenSlices", 0.0) or 0.0)
+    except Exception:
+        sp_z = 0.0
+    if sp_z < 1e-6:
+        try:
+            sp_z = float(getattr(ds, "SliceThickness", 1.0) or 1.0)
+        except Exception:
+            sp_z = 1.0
+    if sp_z < 1e-6:
+        sp_z = 1.0
+
+    spacing_candidate_zyx = [sp_z, sp_y, sp_x]
+    canon = _canon_xyz_from_array_and_spacing(arr, spacing_candidate_zyx, spacing_order="zyx")
+    spacing = canon["spacing_zyx"]
 
     meta = _base_meta(arr, "dicom", spacing, str(getattr(ds, "Modality", "unknown")))
     meta["extra_meta"] = {
@@ -257,6 +366,12 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         "series_description": str(getattr(ds, "SeriesDescription", "")),
         "window_center":      str(getattr(ds, "WindowCenter", "")),
         "window_width":       str(getattr(ds, "WindowWidth", "")),
+        "size_x":             canon["sizeX"],
+        "size_y":             canon["sizeY"],
+        "size_z":             canon["sizeZ"],
+        "spacing_x":          canon["spacingX"],
+        "spacing_y":          canon["spacingY"],
+        "spacing_z":          canon["spacingZ"],
     }
     return arr, meta
 
@@ -264,14 +379,6 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 def _apply_rescale(ds) -> np.ndarray:
     """
     Extract pixel data from a pydicom Dataset and apply HU rescaling.
-
-    What it does:
-      Reads ds.pixel_array as float32 and applies:
-        HU = pixel_value × RescaleSlope + RescaleIntercept
-
-    Why it exists:
-      Both the single-file loader and the series loader need identical HU
-      conversion; extracting it prevents duplication.
     """
     arr = ds.pixel_array.astype(np.float32)
     slope = float(getattr(ds, "RescaleSlope", 1.0))
@@ -283,13 +390,10 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a NIfTI image (.nii or .nii.gz) with nibabel.
 
-    What it does:
-      Reads the image data as float32 and extracts voxel dimensions from
-      the header.  For 3-D volumes the axes are ordered (D, H, W) by
-      transposing from nibabel's (x, y, z) ordering.
-
-    Why it exists:
-      NIfTI is the dominant format in neuroimaging research.
+    Critical fix:
+      nibabel zooms are typically (X, Y, Z) while we transpose array to (Z, Y, X).
+      Therefore we must reorder spacing to match the transposed array before storing
+      canonical metadata as [Z, Y, X].
     """
     try:
         import nibabel as nib
@@ -299,15 +403,28 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     img = nib.load(path)
     arr = img.get_fdata().astype(np.float32)
 
-    # nibabel returns (x, y, z); reorder to (z, y, x) = (D, H, W) for slicing
+    zooms = img.header.get_zooms()
+    # zooms are usually (x, y, z)
+    sp_x, sp_y, sp_z = (list(zooms[:3]) + [1.0, 1.0, 1.0])[:3]
+
+    # nibabel returns (x, y, z); reorder to (z, y, x) = (D, H, W)
     if arr.ndim == 3:
         arr = np.transpose(arr, (2, 1, 0))
 
-    zooms = img.header.get_zooms()
-    spacing = [float(v) for v in zooms[:3]] if len(zooms) >= 3 else [1.0, 1.0, 1.0]
+    # spacing_source is xyz, canonical helper returns spacing_zyx
+    canon = _canon_xyz_from_array_and_spacing(arr, [sp_x, sp_y, sp_z], spacing_order="xyz")
+    spacing = canon["spacing_zyx"]
 
     meta = _base_meta(arr, "nifti", spacing, "MRI")
-    meta["extra_meta"] = {"affine": img.affine.tolist()}
+    meta["extra_meta"] = {
+        "affine": img.affine.tolist(),
+        "size_x": canon["sizeX"],
+        "size_y": canon["sizeY"],
+        "size_z": canon["sizeZ"],
+        "spacing_x": canon["spacingX"],
+        "spacing_y": canon["spacingY"],
+        "spacing_z": canon["spacingZ"],
+    }
     return arr, meta
 
 
@@ -323,6 +440,7 @@ def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) ->
         "is_3d": bool(is_3d),
         "intensity_min": float(arr.min()),
         "intensity_max": float(arr.max()),
+        # Canonical spacing is always [sp_z, sp_y, sp_x] for volumes (Z,Y,X)
         "spacing": spacing,
         "modality": modality,
         "extra_meta": {},
@@ -334,21 +452,6 @@ def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) ->
 def get_slice_2d(arr: np.ndarray, axis: int, index: Optional[int] = None) -> np.ndarray:
     """
     Extract a 2-D slice from *arr* along *axis* at position *index*.
-
-    What it does:
-      For volumetric arrays (D, H, W) returns the requested orthogonal
-      slice.  For 2-D arrays the array is returned as-is (all orientations
-      collapse to the same image).
-
-    Why it exists:
-      The preview endpoint needs to serve axial, sagittal, and coronal
-      slices from a 3-D volume without duplicating the slicing logic.
-
-    Parameters
-    ----------
-    arr   : ndarray – 2-D (H, W) or 3-D (D, H, W)
-    axis  : int     – 0=axial (D), 1=coronal (H), 2=sagittal (W)
-    index : int     – slice index; defaults to the middle slice
     """
     if arr.ndim == 2:
         return arr
@@ -371,15 +474,6 @@ def get_slice_2d(arr: np.ndarray, axis: int, index: Optional[int] = None) -> np.
 def normalise_to_uint8(arr: np.ndarray) -> np.ndarray:
     """
     Normalise *arr* to [0, 255] uint8 for display or encoding.
-
-    What it does:
-      Linearly scales the array so its minimum maps to 0 and its maximum
-      maps to 255.  Single-channel arrays are returned as-is; multi-channel
-      arrays are processed channel-independently.
-
-    Why it exists:
-      Raw pixel arrays (especially CT in Hounsfield units) span arbitrary
-      ranges; normalisation is required before PNG encoding.
     """
     arr = arr.astype(np.float32)
     lo, hi = arr.min(), arr.max()
@@ -391,16 +485,6 @@ def normalise_to_uint8(arr: np.ndarray) -> np.ndarray:
 def array_to_base64_png(arr: np.ndarray) -> str:
     """
     Encode a 2-D or 3-channel NumPy array as a base64-encoded PNG string.
-
-    What it does:
-      Normalises the array to uint8, converts to BGR if necessary, and
-      uses cv2.imencode to produce PNG bytes, which are then base64-encoded
-      for transmission in JSON.
-
-    Why it exists:
-      The preview and process endpoints need to return images inside JSON
-      payloads rather than as binary streams, so base64 is used to embed
-      them as strings.
     """
     u8 = normalise_to_uint8(arr)
     if u8.ndim == 3 and u8.shape[2] == 3:
