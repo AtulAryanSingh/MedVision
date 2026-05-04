@@ -20,7 +20,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from api import find_uploaded_file, load_metadata
-from core.loader import array_to_base64_png, get_slice_2d, load_image
+from core.loader import array_to_base64_png, async_load_image, get_slice_2d
 
 router = APIRouter()
 
@@ -48,7 +48,7 @@ async def get_preview(
     """
     meta = load_metadata(image_id)
     path = find_uploaded_file(image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     shape = arr.shape
     is_3d = meta.get("is_3d", False)

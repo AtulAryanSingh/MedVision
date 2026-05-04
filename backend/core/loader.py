@@ -15,6 +15,7 @@ Why it exists:
 Dependencies: OpenCV, NumPy, pydicom (optional), nibabel (optional)
 """
 
+import asyncio
 import base64
 import os
 from collections import defaultdict
@@ -22,6 +23,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+
+from core.image_cache import image_cache
 
 
 # ── Canonical axis helper ─────────────────────────────────────────────────────
@@ -450,10 +453,6 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 
     meta = _base_meta(arr, "nifti", spacing, "MRI")
     meta["extra_meta"] = {"affine": img.affine.tolist()}
-    
-    # DEBUG PRINT
-    print(f"🚨 NIFTI DEBUG - Shape: {arr.shape} | Spacing ZYX: {spacing}")
-    
     return arr, meta
 def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) -> Dict[str, Any]:
     """Build the standard metadata dict common to all formats."""
@@ -525,3 +524,51 @@ def array_to_base64_png(arr: np.ndarray) -> str:
     if not ok:
         raise RuntimeError("cv2.imencode failed")
     return base64.b64encode(buf.tobytes()).decode("utf-8")
+
+
+# ── Async / cached loader ─────────────────────────────────────────────────────
+
+async def async_load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """
+    Async-safe, LRU-cached wrapper around load_image().
+
+    What it does:
+      1. Checks the module-level LRU image cache.  On a hit, returns the
+         cached (array, metadata) pair immediately — no disk I/O at all.
+      2. On a miss, offloads the blocking load_image() call to the default
+         thread-pool executor so the asyncio event loop is never blocked by
+         disk reads or CPU-heavy NIfTI / DICOM decoding.
+      3. Stores the freshly loaded result in the cache before returning.
+
+    Why it exists:
+      FastAPI coroutines run on the asyncio event loop.  Calling load_image()
+      directly inside an async def blocks the entire event loop for the
+      duration of the disk read and array decode, starving other concurrent
+      requests.  Using run_in_executor() moves the blocking work to a
+      thread-pool worker while the event loop remains responsive.
+
+    Thread safety:
+      Cache lookups / inserts happen in the event-loop coroutine (before and
+      after the await), never inside the worker thread, so no lock contention
+      occurs between the load worker and the cache.
+
+    Parameters
+    ----------
+    path : str
+        File path as returned by find_uploaded_file() or the upload save
+        path — both are rooted at the same real directory.
+
+    Returns
+    -------
+    (array, metadata)  — same contract as load_image().
+    """
+    cached = image_cache.get(path)
+    if cached is not None:
+        return cached
+
+    # Offload blocking I/O + CPU decode to a thread-pool worker
+    loop = asyncio.get_running_loop()
+    arr, meta = await loop.run_in_executor(None, load_image, path)
+
+    image_cache.put(path, arr, meta)
+    return arr, meta
