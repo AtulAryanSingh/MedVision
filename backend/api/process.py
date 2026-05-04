@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from api import find_uploaded_file, load_metadata, update_cache
-from core.loader import array_to_base64_png, get_slice_2d, load_image
+from core.loader import array_to_base64_png, async_load_image, get_slice_2d
 import processing.filters as flt
 import processing.morphology as morph
 from processing.histogram import apply_cdf_threshold, compute_histogram
@@ -81,7 +81,7 @@ async def process_image(req: ProcessRequest):
 
     load_metadata(req.image_id)  # raises 404 if not found
     path = find_uploaded_file(req.image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     # For 3-D volumes work on the middle axial slice
     if arr.ndim == 3 and arr.shape[0] > 4:

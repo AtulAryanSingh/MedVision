@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api import find_uploaded_file, load_metadata, update_cache
-from core.loader import get_slice_2d, load_image
+from core.loader import async_load_image, get_slice_2d
 from features.extractor import extract_features
 
 router = APIRouter()
@@ -45,7 +45,7 @@ async def get_features(req: FeaturesRequest):
     """
     load_metadata(req.image_id)  # 404 guard
     path = find_uploaded_file(req.image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     if arr.ndim == 3 and arr.shape[0] > 4:
         arr = get_slice_2d(arr, axis=0)

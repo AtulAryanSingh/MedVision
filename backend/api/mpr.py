@@ -21,7 +21,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from api import find_uploaded_file, load_metadata
-from core.loader import load_image, get_slice_2d, normalise_to_uint8
+from core.loader import async_load_image, get_slice_2d, normalise_to_uint8
 
 router = APIRouter()
 
@@ -120,7 +120,7 @@ async def get_mpr(
     """
     meta = load_metadata(image_id)
     path = find_uploaded_file(image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     shape = arr.shape
     is_3d = meta.get("is_3d", False)
@@ -128,10 +128,6 @@ async def get_mpr(
     while len(spacing) < 3:
         spacing.append(1.0)
     sp_z, sp_y, sp_x = float(spacing[0]), float(spacing[1]), float(spacing[2])
-
-    # Apply window/level if requested
-    if window_center is not None and window_width is not None and window_width > 0:
-        arr = apply_window_level(arr, window_center, window_width)
 
     if is_3d and arr.ndim >= 3:
         ax_i  = axial_idx    if axial_idx    is not None else shape[0] // 2
@@ -144,9 +140,19 @@ async def get_mpr(
     #   axial    (axis 0): rows=y (sp_y), cols=x (sp_x)
     #   coronal  (axis 1): rows=z (sp_z), cols=x (sp_x)
     #   sagittal (axis 2): rows=z (sp_z), cols=y (sp_y)
+    #
+    # Extract slices FIRST, then apply window/level to the small 2-D arrays.
+    # This avoids creating a full-volume copy just for the contrast adjustment
+    # (window/level is a pointwise operation and commutes with slicing).
     axial_slc    = get_slice_2d(arr, axis=0, index=ax_i)
     coronal_slc  = get_slice_2d(arr, axis=1, index=cor_i)
     sagittal_slc = get_slice_2d(arr, axis=2, index=sag_i)
+
+    # Apply window/level if requested (operates on slices only, not full volume)
+    if window_center is not None and window_width is not None and window_width > 0:
+        axial_slc    = apply_window_level(axial_slc,    window_center, window_width)
+        coronal_slc  = apply_window_level(coronal_slc,  window_center, window_width)
+        sagittal_slc = apply_window_level(sagittal_slc, window_center, window_width)
 
     axial_b64    = _slice_to_b64(axial_slc,    sp_y, sp_x, max_dim)
     coronal_b64  = _slice_to_b64(coronal_slc,  sp_z, sp_x, max_dim)

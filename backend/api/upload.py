@@ -25,6 +25,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from api import find_uploaded_file, get_upload_dir, save_metadata
+from core.image_cache import image_cache
 from core.loader import load_dicom_series, load_image
 
 router = APIRouter()
@@ -85,6 +86,9 @@ async def upload_image(file: UploadFile = File(...)):
     except Exception as exc:
         os.remove(save_path)
         raise HTTPException(status_code=422, detail=f"Could not parse image: {exc}")
+
+    # Prime the LRU cache so the first downstream request is a cache hit
+    image_cache.put(save_path, arr, meta)
 
     meta["image_id"] = image_id
     meta["filename"] = filename
@@ -161,6 +165,9 @@ async def upload_dicom_series(files: List[UploadFile] = File(...)):
         import shutil
         shutil.rmtree(series_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=f"Could not load DICOM series: {exc}")
+
+    # Prime the LRU cache so the first downstream request is a cache hit
+    image_cache.put(series_dir, arr, meta)
 
     meta["image_id"] = image_id
     meta["filename"] = f"{len(files)} DICOM files"

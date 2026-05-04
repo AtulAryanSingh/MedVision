@@ -23,7 +23,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, PlainTextResponse
 
 from api import find_uploaded_file, load_metadata
-from core.loader import get_slice_2d, load_image, normalise_to_uint8
+from core.loader import async_load_image, get_slice_2d, normalise_to_uint8
 from processing.morphology import label_connected_components
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def export_png(image_id: str):
     """
     load_metadata(image_id)
     path = find_uploaded_file(image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     if arr.ndim == 3 and arr.shape[0] > 4:
         arr = get_slice_2d(arr, axis=0)
@@ -80,7 +80,7 @@ async def export_npy(image_id: str):
     """
     load_metadata(image_id)
     path = find_uploaded_file(image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     buf = io.BytesIO()
     np.save(buf, arr)
@@ -113,7 +113,7 @@ async def export_csv(image_id: str):
     """
     meta = load_metadata(image_id)
     path = find_uploaded_file(image_id)
-    arr, _ = load_image(path)
+    arr, _ = await async_load_image(path)
 
     if arr.ndim == 3 and arr.shape[0] > 4:
         arr = get_slice_2d(arr, axis=0)
