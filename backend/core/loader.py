@@ -403,11 +403,13 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Load a NIfTI image (.nii or .nii.gz) with nibabel.
 
-    Correct axis/spacing mapping:
-      - nibabel array is (X,Y,Z)
-      - zooms are (X,Y,Z)
-      - we transpose to (Z,Y,X)
-      - therefore spacing becomes [Z,Y,X] = [zoomZ, zoomY, zoomX]
+    Canonical output in this project:
+      - array order: (Z, Y, X)
+      - spacing metadata: [sp_z, sp_y, sp_x]
+
+    Robust spacing:
+      - Prefer affine-derived voxel sizes (handles rotation/shear/sign)
+      - Fall back to header zooms if affine is missing/weird
     """
     try:
         import nibabel as nib
@@ -417,15 +419,31 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     img = nib.load(path)
     arr = img.get_fdata().astype(np.float32)
 
-    zooms = list(img.header.get_zooms())
-    sp_x = float(zooms[0]) if len(zooms) > 0 else 1.0
-    sp_y = float(zooms[1]) if len(zooms) > 1 else 1.0
-    sp_z = float(zooms[2]) if len(zooms) > 2 else 1.0
+    # --- 1) get source voxel sizes in NIfTI's (X,Y,Z) axis order ---
+    sp_x = sp_y = sp_z = 1.0
+    try:
+        A = np.array(img.affine, dtype=np.float64)
+        # voxel sizes are norms of the first 3 columns (ignoring translation row)
+        sp_x = float(np.linalg.norm(A[:3, 0]))
+        sp_y = float(np.linalg.norm(A[:3, 1]))
+        sp_z = float(np.linalg.norm(A[:3, 2]))
+    except Exception:
+        zooms = list(img.header.get_zooms())
+        sp_x = float(zooms[0]) if len(zooms) > 0 else 1.0
+        sp_y = float(zooms[1]) if len(zooms) > 1 else 1.0
+        sp_z = float(zooms[2]) if len(zooms) > 2 else 1.0
 
-    # nibabel returns (x, y, z); reorder to (z, y, x) for this project
+    # sanitize
+    if not np.isfinite(sp_x) or sp_x <= 1e-6: sp_x = 1.0
+    if not np.isfinite(sp_y) or sp_y <= 1e-6: sp_y = 1.0
+    if not np.isfinite(sp_z) or sp_z <= 1e-6: sp_z = 1.0
+
+    # --- 2) reorder array to project convention (Z,Y,X) ---
+    # nibabel arrays are typically (X,Y,Z)
     if arr.ndim == 3:
-        arr = np.transpose(arr, (2, 1, 0))
+        arr = np.transpose(arr, (2, 1, 0))  # (Z, Y, X)
 
+    # --- 3) store spacing canonically as [Z,Y,X] ---
     spacing_candidate_zyx = [sp_z, sp_y, sp_x]
     canon = _canon_xyz_from_array_and_spacing(arr, spacing_candidate_zyx, spacing_order="zyx")
     spacing = canon["spacing_zyx"]
@@ -433,8 +451,6 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     meta = _base_meta(arr, "nifti", spacing, "MRI")
     meta["extra_meta"] = {"affine": img.affine.tolist()}
     return arr, meta
-
-
 def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) -> Dict[str, Any]:
     """Build the standard metadata dict common to all formats."""
     # is_3d: volumetric if ndim==3 AND the last axis > 4 (i.e. not a colour channel dim)
