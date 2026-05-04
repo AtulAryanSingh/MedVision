@@ -25,6 +25,9 @@ backend/data/uploads/*
 backend/data/cache/*
 !backend/data/cache/.gitkeep
 
+# Users database (runtime data – not part of source)
+backend/data/users.db
+
 # Node
 node_modules/
 frontend/dist/
