@@ -450,7 +450,10 @@ def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 
     meta = _base_meta(arr, "nifti", spacing, "MRI")
     meta["extra_meta"] = {"affine": img.affine.tolist()}
+    
+    # DEBUG PRINT
     print(f"🚨 NIFTI DEBUG - Shape: {arr.shape} | Spacing ZYX: {spacing}")
+    
     return arr, meta
 def _base_meta(arr: np.ndarray, file_type: str, spacing: list, modality: str) -> Dict[str, Any]:
     """Build the standard metadata dict common to all formats."""
