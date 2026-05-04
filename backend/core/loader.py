@@ -3,9 +3,10 @@ core/loader.py
 
 What this module does:
   Unified interface for loading medical images from disk into NumPy arrays.
-  Supports DICOM (.dcm), NIfTI (.nii / .nii.gz), and standard 2-D formats
-  (PNG, JPG).  Also provides slice-extraction and base64-PNG encoding
-  helpers used by the API preview and process endpoints.
+  Supports DICOM series directories, single DICOM (.dcm), NIfTI (.nii /
+  .nii.gz), and standard 2-D formats (PNG, JPG).  Also provides
+  slice-extraction and base64-PNG encoding helpers used by the API preview
+  and process endpoints.
 
 Why it exists:
   Centralising all format-specific parsing here keeps every other module
@@ -16,7 +17,8 @@ Dependencies: OpenCV, NumPy, pydicom (optional), nibabel (optional)
 
 import base64
 import os
-from typing import Any, Dict, Optional, Tuple
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -29,9 +31,10 @@ def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     Load a medical image from *path* and return (array, metadata).
 
     What it does:
-      Inspects the file extension to route to the correct format-specific
-      loader, then returns a float32 NumPy array and a structured metadata
-      dict.
+      - If *path* is a directory it is treated as a DICOM series and
+        delegated to load_dicom_series().
+      - Otherwise inspects the file extension to route to the correct
+        format-specific loader.
 
     Why it exists:
       All API endpoints need a consistent, format-agnostic way to obtain a
@@ -40,7 +43,7 @@ def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     Parameters
     ----------
     path : str
-        Absolute path to the image file on disk.
+        Absolute path to the image file or series directory on disk.
 
     Returns
     -------
@@ -51,12 +54,149 @@ def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         Keys: file_type, shape, dtype_str, ndim, intensity_min,
               intensity_max, spacing, modality, is_3d, extra_meta.
     """
+    if os.path.isdir(path):
+        return load_dicom_series(path)
     ext = os.path.splitext(path)[1].lower()
     if ext == ".dcm":
         return _load_dicom(path)
     if ext in (".nii", ".gz"):
         return _load_nifti(path)
     return _load_standard(path)
+
+
+# ── DICOM series loader ───────────────────────────────────────────────────────
+
+def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """
+    Load a directory of DICOM files as a 3-D volume.
+
+    What it does:
+      1. Scans *directory* for .dcm files.
+      2. Header-only pass (stop_before_pixels=True) to extract
+         SeriesInstanceUID, InstanceNumber, and ImagePositionPatient.
+      3. Groups slices by SeriesInstanceUID; selects the largest group.
+      4. Sorts slices by InstanceNumber (primary) or
+         ImagePositionPatient[2] z-coordinate (fallback).
+      5. Pre-allocates a float32 (D, H, W) array and fills it one slice at
+         a time so only one slice of pixel data is in memory at once.
+      6. Derives voxel spacing: PixelSpacing (y, x) + slice gap from
+         ImagePositionPatient or SliceThickness.
+
+    Why it exists:
+      Multi-file DICOM is the standard form for CT/MRI volumes.  Handling
+      100–1000 slices efficiently requires a header-first sort before any
+      pixel data is loaded.
+
+    Parameters
+    ----------
+    directory : str
+        Absolute path to a directory containing one or more .dcm files.
+
+    Returns
+    -------
+    array : np.ndarray  float32 (D, H, W)
+    metadata : dict     same schema as _base_meta plus series extra_meta
+    """
+    try:
+        import pydicom
+    except ImportError:
+        raise ImportError("Install pydicom: pip install pydicom")
+
+    # ── 1. Collect .dcm paths ─────────────────────────────────────────────
+    dcm_paths: List[str] = sorted([
+        os.path.join(directory, f)
+        for f in os.listdir(directory)
+        if f.lower().endswith(".dcm")
+    ])
+    if not dcm_paths:
+        raise ValueError(f"No .dcm files found in directory: {directory}")
+
+    # ── 2. Header-only pass ───────────────────────────────────────────────
+    headers: List[Tuple[str, Any]] = []
+    for p in dcm_paths:
+        try:
+            ds = pydicom.dcmread(p, stop_before_pixels=True)
+            headers.append((p, ds))
+        except Exception:
+            # Skip unreadable files silently; fail later if nothing remains
+            continue
+
+    if not headers:
+        raise ValueError("No readable DICOM files found in directory.")
+
+    # ── 3. Group by SeriesInstanceUID, keep largest group ─────────────────
+    groups: Dict[str, List[Tuple[str, Any]]] = defaultdict(list)
+    for p, ds in headers:
+        uid = str(getattr(ds, "SeriesInstanceUID", "unknown"))
+        groups[uid].append((p, ds))
+
+    uid, group = max(groups.items(), key=lambda kv: len(kv[1]))
+
+    # ── 4. Sort slices ────────────────────────────────────────────────────
+    def _sort_key(item: Tuple[str, Any]) -> Tuple[int, float]:
+        _, ds = item
+        inst = getattr(ds, "InstanceNumber", None)
+        if inst is not None:
+            return (0, float(inst))
+        ipp = getattr(ds, "ImagePositionPatient", None)
+        if ipp is not None:
+            return (1, float(ipp[2]))
+        return (2, 0.0)
+
+    group.sort(key=_sort_key)
+    sorted_paths = [p for p, _ in group]
+
+    # ── 5. Derive spacing from geometry ───────────────────────────────────
+    first_ds = group[0][1]
+    ps = getattr(first_ds, "PixelSpacing", [1.0, 1.0])
+    sp_y, sp_x = float(ps[0]), float(ps[1])
+
+    if len(group) > 1:
+        ipp0 = getattr(group[0][1], "ImagePositionPatient", None)
+        ipp1 = getattr(group[1][1], "ImagePositionPatient", None)
+        if ipp0 is not None and ipp1 is not None:
+            sp_z = abs(float(ipp1[2]) - float(ipp0[2]))
+        else:
+            sp_z = float(getattr(first_ds, "SliceThickness", 1.0))
+    else:
+        sp_z = float(getattr(first_ds, "SliceThickness", 1.0))
+
+    if sp_z < 1e-6:
+        sp_z = float(getattr(first_ds, "SliceThickness", 0.0)) or 1.0
+
+    spacing = [sp_z, sp_y, sp_x]   # ordered (D, H, W) = (z, y, x)
+
+    # ── 6. Pre-allocate and fill slice by slice ───────────────────────────
+    first_full = pydicom.dcmread(sorted_paths[0])
+    first_slice = _apply_rescale(first_full)
+    H, W = first_slice.shape[:2]
+    D = len(sorted_paths)
+
+    volume = np.zeros((D, H, W), dtype=np.float32)
+    volume[0] = first_slice
+
+    for i, path in enumerate(sorted_paths[1:], start=1):
+        ds_full = pydicom.dcmread(path)
+        sl = _apply_rescale(ds_full)
+        if sl.shape[:2] == (H, W):
+            volume[i] = sl
+        else:
+            # Resize inconsistent slice to match first (rare edge case)
+            volume[i] = cv2.resize(sl, (W, H), interpolation=cv2.INTER_LINEAR)
+
+    modality = str(getattr(first_ds, "Modality", "unknown"))
+    meta = _base_meta(volume, "dicom_series", spacing, modality)
+    meta["extra_meta"] = {
+        "patient_id":          str(getattr(first_ds, "PatientID", "")),
+        "study_date":          str(getattr(first_ds, "StudyDate", "")),
+        "series_description":  str(getattr(first_ds, "SeriesDescription", "")),
+        "series_instance_uid": uid,
+        "n_slices":            D,
+        "window_center":       str(getattr(first_ds, "WindowCenter", "")),
+        "window_width":        str(getattr(first_ds, "WindowWidth", "")),
+    }
+    meta["n_slices"] = D
+    return volume, meta
 
 
 # ── Format-specific loaders ───────────────────────────────────────────────────
@@ -89,7 +229,7 @@ def _load_standard(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 
 def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
-    Load a DICOM file with pydicom and apply rescale slope/intercept.
+    Load a single DICOM file with pydicom and apply rescale slope/intercept.
 
     What it does:
       Reads the pixel array, applies RescaleSlope and RescaleIntercept (so
@@ -105,24 +245,38 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
         raise ImportError("Install pydicom: pip install pydicom")
 
     ds = pydicom.dcmread(path)
-    arr = ds.pixel_array.astype(np.float32)
-
-    slope = float(getattr(ds, "RescaleSlope", 1.0))
-    intercept = float(getattr(ds, "RescaleIntercept", 0.0))
-    arr = arr * slope + intercept
+    arr = _apply_rescale(ds)
 
     ps = getattr(ds, "PixelSpacing", [1.0, 1.0])
     spacing = [float(ps[0]), float(ps[1]), float(getattr(ds, "SliceThickness", 1.0))]
 
     meta = _base_meta(arr, "dicom", spacing, str(getattr(ds, "Modality", "unknown")))
     meta["extra_meta"] = {
-        "patient_id": str(getattr(ds, "PatientID", "")),
-        "study_date": str(getattr(ds, "StudyDate", "")),
+        "patient_id":         str(getattr(ds, "PatientID", "")),
+        "study_date":         str(getattr(ds, "StudyDate", "")),
         "series_description": str(getattr(ds, "SeriesDescription", "")),
-        "window_center": str(getattr(ds, "WindowCenter", "")),
-        "window_width": str(getattr(ds, "WindowWidth", "")),
+        "window_center":      str(getattr(ds, "WindowCenter", "")),
+        "window_width":       str(getattr(ds, "WindowWidth", "")),
     }
     return arr, meta
+
+
+def _apply_rescale(ds) -> np.ndarray:
+    """
+    Extract pixel data from a pydicom Dataset and apply HU rescaling.
+
+    What it does:
+      Reads ds.pixel_array as float32 and applies:
+        HU = pixel_value × RescaleSlope + RescaleIntercept
+
+    Why it exists:
+      Both the single-file loader and the series loader need identical HU
+      conversion; extracting it prevents duplication.
+    """
+    arr = ds.pixel_array.astype(np.float32)
+    slope = float(getattr(ds, "RescaleSlope", 1.0))
+    intercept = float(getattr(ds, "RescaleIntercept", 0.0))
+    return arr * slope + intercept
 
 
 def _load_nifti(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:

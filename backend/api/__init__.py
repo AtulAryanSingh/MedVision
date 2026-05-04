@@ -61,25 +61,35 @@ _ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".dcm", ".nii", ".gz"}
 
 def find_uploaded_file(image_id: str) -> str:
     """
-    Locate the uploaded file for *image_id* in the uploads directory.
+    Locate the uploaded file (or series directory) for *image_id*.
 
     What it does:
-      Sanitises the image_id (parse as UUID + re-serialise), then scans
-      the uploads directory for a file whose stem equals the sanitised id
-      and whose extension is in the allowed set.
+      Sanitises the image_id (parse as UUID + re-serialise), then:
+      1. Checks whether a series directory  <image_id>/  exists in the
+         uploads folder (DICOM series uploads land here).
+      2. Falls back to scanning for a single file  <image_id>.<ext>  with
+         each allowed extension.
 
     Why it exists:
-      The upload endpoint stores files as  <image_id>.<original_ext>, but
-      downstream endpoints only know the image_id.  This function bridges
-      that gap without hard-coding a single extension.
+      The upload endpoint stores files as  <image_id>.<original_ext>  for
+      single files, or as  <image_id>/  for DICOM series.  Downstream
+      endpoints only know the image_id; this function bridges the gap
+      without hard-coding a single layout.
 
     Raises
     ------
     HTTPException 400  – if image_id is not a valid UUID.
-    HTTPException 404  – if no matching file is found.
+    HTTPException 404  – if no matching file or directory is found.
     """
     safe_id = _sanitize_image_id(image_id)
     upload_dir = get_upload_dir()
+
+    # Check for a DICOM series directory first
+    series_dir = os.path.join(upload_dir, safe_id)
+    if os.path.isdir(series_dir):
+        return series_dir
+
+    # Fall back to single-file lookup
     for ext in _ALLOWED_EXTS:
         candidate = os.path.join(upload_dir, f"{safe_id}{ext}")
         if os.path.isfile(candidate):

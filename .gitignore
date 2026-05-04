@@ -19,9 +19,11 @@ env/
 .env
 .env.local
 
-# Uploaded images (runtime data – not part of source)
+# Uploaded images and metadata cache (runtime data – not part of source)
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
+backend/data/cache/*
+!backend/data/cache/.gitkeep
 
 # Node
 node_modules/
