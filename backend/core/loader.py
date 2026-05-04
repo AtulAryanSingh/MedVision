@@ -187,6 +187,7 @@ def load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     if ext in (".nii", ".gz"):
         return _load_nifti(path)
     return _load_standard(path)
+    print("LOADING FROM DISK")
 
 
 # ── DICOM series loader ───────────────────────────────────────────────────────
