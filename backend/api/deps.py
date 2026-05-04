@@ -9,10 +9,10 @@ What this module does:
     decoded payload.  Raises HTTP 401 on any failure so that protected routes
     automatically reject unauthenticated requests.
 
-  The JWT secret is read from the JWT_SECRET environment variable.  A random
-  256-bit default is generated at import time so the server starts without
-  manual configuration in development, but tokens are invalidated on restart
-  unless the variable is set explicitly.
+  The JWT secret is read from the JWT_SECRET environment variable.  If it is
+  not set a random 256-bit value is generated at import time and a warning is
+  emitted – tokens issued with a transient secret are invalidated on restart.
+  In production JWT_SECRET *must* be set to a stable secret.
 
 Configuration
 -------------
@@ -21,6 +21,7 @@ Configuration
   JWT_EXPIRE_MINUTES – access-token lifetime, defaults to 60 minutes.
 """
 
+import logging
 import os
 import secrets
 
@@ -28,9 +29,21 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
+logger = logging.getLogger(__name__)
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-JWT_SECRET: str = os.environ.get("JWT_SECRET") or secrets.token_hex(32)
+_secret_from_env = os.environ.get("JWT_SECRET")
+if not _secret_from_env:
+    logger.warning(
+        "JWT_SECRET environment variable is not set. "
+        "A random secret will be used – all tokens will be invalidated on restart. "
+        "Set JWT_SECRET to a stable secret value in production."
+    )
+    JWT_SECRET: str = secrets.token_hex(32)
+else:
+    JWT_SECRET = _secret_from_env
+
 JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES: int = int(os.environ.get("JWT_EXPIRE_MINUTES", "60"))
 

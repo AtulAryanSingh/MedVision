@@ -11,23 +11,42 @@ What this module does:
 
   The table schema is intentionally minimal:
     users(id INTEGER PK, username TEXT UNIQUE, hashed_password TEXT)
+
+Thread safety:
+  Each OS thread gets its own SQLite connection via threading.local() so that
+  concurrent uvicorn workers never share a connection handle.
 """
 
+import logging
 import os
+import secrets
 import sqlite3
+import threading
 from typing import Optional
 
 from passlib.context import CryptContext
 
+logger = logging.getLogger(__name__)
+
 _DB_PATH = os.path.join(os.path.dirname(__file__), "data", "users.db")
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_local = threading.local()
 
 
 def _get_conn() -> sqlite3.Connection:
-    """Return a connection to the users database (thread-check disabled for uvicorn workers)."""
-    os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    """
+    Return a per-thread SQLite connection to the users database.
+
+    Using threading.local() gives every OS thread its own connection, which
+    is the recommended approach when running under a multi-threaded ASGI
+    server (e.g. uvicorn with multiple workers or threads).
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        _local.conn = conn
     return conn
 
 
@@ -36,8 +55,10 @@ def init_db() -> None:
     Create the users table if it does not already exist and seed a default
     admin account when the table is first created.
 
-    The default credentials (admin / changeme) are intended for first-boot
-    only – operators should change the password immediately after deployment.
+    On first boot a cryptographically random password is generated for the
+    admin account and printed to stdout so the operator can retrieve it.
+    Operators should change this password (or provision their own user) as
+    soon as possible after deployment.
     """
     with _get_conn() as conn:
         conn.execute(
@@ -54,12 +75,21 @@ def init_db() -> None:
         # Seed a default admin user if the table is empty
         row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
         if row[0] == 0:
-            hashed = _pwd_ctx.hash("changeme")
+            initial_password = secrets.token_urlsafe(16)
+            hashed = _pwd_ctx.hash(initial_password)
             conn.execute(
                 "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
                 ("admin", hashed),
             )
             conn.commit()
+            # Print to stdout so the operator can capture it from server logs
+            print(
+                f"\n[MedVision] First-boot admin credentials:\n"
+                f"  username: admin\n"
+                f"  password: {initial_password}\n"
+                f"Change this password immediately after first login.\n",
+                flush=True,
+            )
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -69,11 +99,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def get_user(username: str) -> Optional[sqlite3.Row]:
     """Return the users row for *username*, or None if not found."""
-    with _get_conn() as conn:
-        return conn.execute(
-            "SELECT id, username, hashed_password FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
+    return _get_conn().execute(
+        "SELECT id, username, hashed_password FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
 
 
 def create_user(username: str, password: str) -> None:
