@@ -9,3 +9,5 @@ pydicom
 nibabel
 scikit-image
 scikit-learn
+PyJWT==2.12.0
+passlib[bcrypt]==1.7.4

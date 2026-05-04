@@ -320,8 +320,6 @@ def load_dicom_series(directory: str) -> Tuple[np.ndarray, Dict[str, Any]]:
     modality = str(getattr(first_ds, "Modality", "unknown"))
     meta = _base_meta(volume, "dicom_series", spacing, modality)
     meta["extra_meta"] = {
-        "patient_id":          str(getattr(first_ds, "PatientID", "")),
-        "study_date":          str(getattr(first_ds, "StudyDate", "")),
         "series_description":  str(getattr(first_ds, "SeriesDescription", "")),
         "series_instance_uid": uid,
         "n_slices":            D,
@@ -384,8 +382,6 @@ def _load_dicom(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
 
     meta = _base_meta(arr, "dicom", spacing, str(getattr(ds, "Modality", "unknown")))
     meta["extra_meta"] = {
-        "patient_id":         str(getattr(ds, "PatientID", "")),
-        "study_date":         str(getattr(ds, "StudyDate", "")),
         "series_description": str(getattr(ds, "SeriesDescription", "")),
         "window_center":      str(getattr(ds, "WindowCenter", "")),
         "window_width":       str(getattr(ds, "WindowWidth", "")),
