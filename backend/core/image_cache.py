@@ -14,7 +14,7 @@ Why it exists:
 Performance notes:
   - Cache key is the file path as returned by find_uploaded_file() / the
     upload save path (both rooted at the same real directory).
-  - Stored values are raw NumPy arrays; no serialisation overhead.
+  - Stored values are raw NumPy arrays; no serialization overhead.
   - LRU eviction (oldest-used first) ensures large volumes do not accumulate.
   - Limits are configurable via environment variables:
       MEDVISION_CACHE_MB    – max total cache size in MiB (default: 2048)
@@ -25,8 +25,10 @@ Thread safety:
   state.  This is correct for the asyncio + thread-pool usage pattern:
   the blocking image load runs in a thread-pool worker via
   loop.run_in_executor(), while cache lookups and insertions happen in the
-  event-loop coroutine (before / after the await), so there is no
-  concurrent access between the loading worker and the cache dict.
+  event-loop coroutine (before / after the await).  Lock contention is
+  therefore minimized: the only concurrent accessors are multiple
+  simultaneous coroutines performing a lookup before their respective
+  executor calls, which is a fast, non-blocking critical section.
 """
 
 import os

@@ -548,9 +548,11 @@ async def async_load_image(path: str) -> Tuple[np.ndarray, Dict[str, Any]]:
       thread-pool worker while the event loop remains responsive.
 
     Thread safety:
-      Cache lookups / inserts happen in the event-loop coroutine (before and
-      after the await), never inside the worker thread, so no lock contention
-      occurs between the load worker and the cache.
+      Cache lookups and inserts happen in the event-loop coroutine (before
+      and after the await), while the blocking load runs in a thread-pool
+      worker.  Lock contention in the cache is therefore minimized: the
+      only concurrent accessors are multiple simultaneous coroutines doing
+      a brief lookup or insert, not the loading workers themselves.
 
     Parameters
     ----------
