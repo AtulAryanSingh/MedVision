@@ -18,6 +18,7 @@ import os
 import uuid
 import json
 from fastapi import HTTPException
+import config
 
 
 def _sanitize_image_id(image_id: str) -> str:
@@ -42,14 +43,14 @@ def _sanitize_image_id(image_id: str) -> str:
 
 def get_upload_dir() -> str:
     """Return absolute path to the uploads directory, creating it if needed."""
-    path = os.path.join(os.path.dirname(__file__), "..", "data", "uploads")
+    path = config.UPLOAD_DIR
     os.makedirs(path, exist_ok=True)
     return os.path.realpath(path)
 
 
 def get_cache_dir() -> str:
     """Return absolute path to the metadata cache directory, creating it if needed."""
-    path = os.path.join(os.path.dirname(__file__), "..", "data", "cache")
+    path = config.CACHE_DIR
     os.makedirs(path, exist_ok=True)
     return os.path.realpath(path)
 
