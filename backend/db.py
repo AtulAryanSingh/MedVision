@@ -25,10 +25,11 @@ import threading
 from typing import Optional
 
 from passlib.context import CryptContext
+import config
 
 logger = logging.getLogger(__name__)
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "users.db")
+_DB_PATH = config.USERS_DB_PATH
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _local = threading.local()
 

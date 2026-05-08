@@ -109,6 +109,31 @@ npm run build          # outputs to frontend/dist/
 npm run preview        # serve the production build locally
 ```
 
+### 4 – Docker (backend + frontend with compose)
+
+```bash
+# from repository root
+cp .env.example .env
+docker compose up --build
+
+# Frontend: http://localhost:5173
+# Backend:  http://localhost:8000
+```
+
+Backend runs in production mode with Gunicorn + Uvicorn workers.
+See `docs/DEPLOYMENT.md` for deployment details.
+
+### 5 – Backend tests
+
+```bash
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q
+
+# Optional coverage
+pytest --cov=. --cov-report=term-missing
+```
+
 ---
 
 ## Supported Formats
@@ -258,6 +283,7 @@ pytest --cov=. --cov-report=term-missing
 
 - `image_id` is validated as a UUID (parsed with `uuid.UUID()` and re-serialised before any path operation) to prevent path-traversal attacks.
 - No credentials or patient data are committed. The `data/` directory is git-ignored.
+- Copy `.env.example` to `.env` and set a stable `JWT_SECRET` before production deployment.
 
 ---
 
