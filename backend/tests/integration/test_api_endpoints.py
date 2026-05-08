@@ -31,11 +31,11 @@ def test_upload_endpoint_with_mocked_loader(client, monkeypatch, tmp_path):
         ),
     )
 
-    def fake_save_metadata(image_id, metadata):
+    def mock_save_metadata(image_id, metadata):
         saved["image_id"] = image_id
         saved["metadata"] = metadata
 
-    monkeypatch.setattr(upload_api, "save_metadata", fake_save_metadata)
+    monkeypatch.setattr(upload_api, "save_metadata", mock_save_metadata)
 
     resp = client.post(
         "/api/upload",

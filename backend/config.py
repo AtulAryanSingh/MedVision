@@ -45,6 +45,6 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads"))
 CACHE_DIR = os.environ.get("CACHE_DIR", str(BASE_DIR / "data" / "cache"))
 USERS_DB_PATH = os.environ.get("USERS_DB_PATH", str(BASE_DIR / "data" / "users.db"))
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "")
+JWT_SECRET = os.environ.get("JWT_SECRET")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "60"))
