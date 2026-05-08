@@ -22,18 +22,18 @@ Configuration
 """
 
 import logging
-import os
 import secrets
 
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+import config
 
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-_secret_from_env = os.environ.get("JWT_SECRET")
+_secret_from_env = config.JWT_SECRET
 if not _secret_from_env:
     logger.warning(
         "JWT_SECRET environment variable is not set. "
@@ -44,8 +44,8 @@ if not _secret_from_env:
 else:
     JWT_SECRET = _secret_from_env
 
-JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES: int = int(os.environ.get("JWT_EXPIRE_MINUTES", "60"))
+JWT_ALGORITHM: str = config.JWT_ALGORITHM
+JWT_EXPIRE_MINUTES: int = config.JWT_EXPIRE_MINUTES
 
 # ── OAuth2 scheme ─────────────────────────────────────────────────────────────
 # tokenUrl points to the login endpoint so Swagger UI's "Authorize" button works.

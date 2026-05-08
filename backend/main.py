@@ -14,6 +14,7 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import config
 
 # ── Authentication ─────────────────────────────────────────────────────────
 import db as _db
@@ -53,24 +54,14 @@ _db.init_db()
 # Allow all common localhost variants for local development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:3000",
-        "http://localhost:5173",   # Vite default
-        "http://localhost:5500",
-        "http://127.0.0.1",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5500",
-        "null",                    # file:// origin
-    ],
-    allow_credentials=True,
+    allow_origins=config.ALLOWED_ORIGINS,
+    allow_credentials=config.CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Static file serving ────────────────────────────────────────────────────
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "data", "uploads")
+UPLOAD_DIR = config.UPLOAD_DIR
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
