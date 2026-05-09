@@ -2,6 +2,8 @@
 api/auth.py
 
 What this module does:
+  POST /api/auth/register – create a new user account with a bcrypt-hashed
+                            password.
   POST /api/auth/login  – validate username + password against the SQLite
                           users table and issue a signed JWT access token.
 
@@ -14,16 +16,64 @@ Why it exists:
 """
 
 from datetime import datetime, timedelta, timezone
+import sqlite3
 
 import jwt
 from fastapi import APIRouter, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import Depends
+from pydantic import BaseModel, EmailStr, Field
 
 import db
 from api.deps import JWT_ALGORITHM, JWT_EXPIRE_MINUTES, JWT_SECRET
 
 router = APIRouter()
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=256)
+
+
+@router.post(
+    "/auth/register",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new user account",
+    tags=["Auth"],
+)
+def register(payload: RegisterRequest):
+    existing = db.get_user_by_username_or_email(payload.username, payload.email)
+    if existing:
+        if existing["username"] == payload.username:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already exists.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already exists.",
+        )
+
+    try:
+        created = db.create_user(
+            username=payload.username,
+            email=payload.email,
+            password=payload.password,
+            role="guest",
+        )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username or email already exists.",
+        ) from exc
+
+    return {
+        "id": created["id"],
+        "username": created["username"],
+        "email": created["email"],
+        "role": created["role"],
+    }
 
 
 @router.post(

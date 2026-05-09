@@ -237,6 +237,7 @@ pip install pytest pytest-asyncio httpx
 | Variable | Default | Description |
 |---|---|---|
 | `JWT_SECRET` | random (dev only) | HMAC-SHA256 signing secret. Set for stable tokens. |
+| `BCRYPT_ROUNDS` | `12` | BCrypt work factor used for password hashing. |
 
 > **Tip:** `conftest.py` sets `JWT_SECRET` via `os.environ.setdefault` so you
 > don't need to export it manually for tests; the value in your environment
@@ -284,6 +285,33 @@ pytest --cov=. --cov-report=term-missing
 - `image_id` is validated as a UUID (parsed with `uuid.UUID()` and re-serialised before any path operation) to prevent path-traversal attacks.
 - No credentials or patient data are committed. The `data/` directory is git-ignored.
 - Copy `.env.example` to `.env` and set a stable `JWT_SECRET` before production deployment.
+
+### Auth API quick call (registration)
+
+`POST /api/auth/register`
+
+```bash
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "StrongPass123!"
+  }'
+```
+
+Success (`201`):
+
+```json
+{
+  "id": 2,
+  "username": "alice",
+  "email": "alice@example.com",
+  "role": "guest"
+}
+```
+
+Duplicate username/email returns `409`.
 
 ---
 

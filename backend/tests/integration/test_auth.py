@@ -1,7 +1,7 @@
 """
 tests/integration/test_auth.py
 
-Integration tests for POST /api/auth/login.
+Integration tests for auth endpoints.
 
 Covers
 ------
@@ -9,10 +9,104 @@ Covers
 • Wrong password → 401
 • Non-existent user → 401
 • Missing fields → 422 (FastAPI form validation)
+• Registration success and duplicate checks
 • Protected endpoint without token → 401
 • Protected endpoint with invalid token → 401
 • Protected endpoint with valid token → passes auth (delegates to health)
 """
+
+import sqlite3
+
+
+class TestRegister:
+    def test_register_returns_201_with_guest_role(self, anon_client, monkeypatch):
+        import db
+
+        created_user = {
+            "id": 7,
+            "username": "newuser",
+            "email": "newuser@example.com",
+            "role": "guest",
+        }
+        monkeypatch.setattr(db, "get_user_by_username_or_email", lambda *_: None)
+        monkeypatch.setattr(db, "create_user", lambda **_: created_user)
+
+        response = anon_client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": "StrongPass123!",
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json() == created_user
+
+    def test_register_duplicate_username_returns_409(self, anon_client, monkeypatch):
+        import db
+
+        monkeypatch.setattr(
+            db,
+            "get_user_by_username_or_email",
+            lambda *_: {"username": "taken", "email": "taken@example.com"},
+        )
+
+        response = anon_client.post(
+            "/api/auth/register",
+            json={
+                "username": "taken",
+                "email": "new@example.com",
+                "password": "StrongPass123!",
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Username already exists."
+
+    def test_register_duplicate_email_returns_409(self, anon_client, monkeypatch):
+        import db
+
+        monkeypatch.setattr(
+            db,
+            "get_user_by_username_or_email",
+            lambda *_: {"username": "existing", "email": "taken@example.com"},
+        )
+
+        response = anon_client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "taken@example.com",
+                "password": "StrongPass123!",
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Email already exists."
+
+    def test_register_integrity_error_returns_409(self, anon_client, monkeypatch):
+        import db
+
+        monkeypatch.setattr(db, "get_user_by_username_or_email", lambda *_: None)
+
+        def _raise_integrity_error(**_):
+            raise sqlite3.IntegrityError("duplicate")
+
+        monkeypatch.setattr(db, "create_user", _raise_integrity_error)
+
+        response = anon_client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": "StrongPass123!",
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Username or email already exists."
+
 
 class TestLogin:
     def test_valid_credentials_return_200(self, anon_client, monkeypatch):

@@ -48,3 +48,4 @@ USERS_DB_PATH = os.environ.get("USERS_DB_PATH", str(BASE_DIR / "data" / "users.d
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "60"))
+BCRYPT_ROUNDS = int(os.environ.get("BCRYPT_ROUNDS", "12"))
