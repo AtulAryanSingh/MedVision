@@ -1,0 +1,19 @@
+# Git
+.git
+.gitignore
+
+# Python Environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Local Data and Secrets
+data/
+.env
+
+# MacOS
+.DS_Store
