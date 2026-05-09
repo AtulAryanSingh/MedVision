@@ -8,6 +8,7 @@ cp .env.example .env
 
 Set at least:
 - `JWT_SECRET` (required for stable auth tokens)
+- `BCRYPT_ROUNDS` (bcrypt password hashing cost, default `12`)
 - `ALLOWED_ORIGINS` (must include your frontend origin)
 - `UPLOAD_DIR`, `CACHE_DIR`, `USERS_DB_PATH` (storage paths)
 

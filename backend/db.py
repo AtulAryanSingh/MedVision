@@ -10,7 +10,13 @@ What this module does:
   persisted across restarts but excluded from source control via .gitignore.
 
   The table schema is intentionally minimal:
-    users(id INTEGER PK, username TEXT UNIQUE, hashed_password TEXT)
+    users(
+      id INTEGER PK,
+      username TEXT UNIQUE,
+      email TEXT UNIQUE,
+      hashed_password TEXT,
+      role TEXT
+    )
 
 Thread safety:
   Each OS thread gets its own SQLite connection via threading.local() so that
@@ -30,7 +36,12 @@ import config
 logger = logging.getLogger(__name__)
 
 _DB_PATH = config.USERS_DB_PATH
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+DEFAULT_USER_ROLE = "guest"
+_pwd_ctx = CryptContext(
+    schemes=["bcrypt"],
+    bcrypt__rounds=config.BCRYPT_ROUNDS,
+    deprecated="auto",
+)
 _local = threading.local()
 
 
@@ -67,10 +78,13 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 username         TEXT    NOT NULL UNIQUE,
+                email            TEXT    NOT NULL UNIQUE,
+                role             TEXT    NOT NULL DEFAULT 'guest',
                 hashed_password  TEXT    NOT NULL
             )
             """
         )
+        _migrate_users_table(conn)
         conn.commit()
 
         # Seed a default admin user if the table is empty
@@ -79,8 +93,8 @@ def init_db() -> None:
             initial_password = secrets.token_urlsafe(16)
             hashed = _pwd_ctx.hash(initial_password)
             conn.execute(
-                "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
-                ("admin", hashed),
+                "INSERT INTO users (username, email, role, hashed_password) VALUES (?, ?, ?, ?)",
+                ("admin", "admin@medvision.local", "admin", hashed),
             )
             conn.commit()
             # Print to stdout so the operator can capture it from server logs
@@ -93,6 +107,57 @@ def init_db() -> None:
             )
 
 
+def _migrate_users_table(conn: sqlite3.Connection) -> None:
+    """Perform additive schema migrations for legacy users tables."""
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(users)").fetchall()
+    }
+    needs_rebuild = False
+
+    if "email" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        needs_rebuild = True
+    if "role" not in columns:
+        conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'guest'")
+        needs_rebuild = True
+
+    conn.execute(
+        """
+        UPDATE users
+        SET email = lower(username) || '.' || id || '@legacy.example.invalid'
+        WHERE email IS NULL OR trim(email) = ''
+        """
+    )
+    conn.execute(
+        "UPDATE users SET role = ? WHERE role IS NULL OR trim(role) = ''",
+        (DEFAULT_USER_ROLE,),
+    )
+
+    if needs_rebuild:
+        conn.execute("DROP TABLE IF EXISTS users_migrated")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users_migrated (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                username         TEXT    NOT NULL UNIQUE,
+                email            TEXT    NOT NULL UNIQUE,
+                role             TEXT    NOT NULL DEFAULT 'guest',
+                hashed_password  TEXT    NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO users_migrated (id, username, email, role, hashed_password)
+            SELECT id, username, email, role, hashed_password
+            FROM users
+            """
+        )
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_migrated RENAME TO users")
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored *hashed* password."""
     return _pwd_ctx.verify(plain, hashed)
@@ -101,21 +166,39 @@ def verify_password(plain: str, hashed: str) -> bool:
 def get_user(username: str) -> Optional[sqlite3.Row]:
     """Return the users row for *username*, or None if not found."""
     return _get_conn().execute(
-        "SELECT id, username, hashed_password FROM users WHERE username = ?",
+        "SELECT id, username, email, role, hashed_password FROM users WHERE username = ?",
         (username,),
     ).fetchone()
 
 
-def create_user(username: str, password: str) -> None:
-    """
-    Insert a new user with a bcrypt-hashed password.
+def get_user_by_username_or_email(username: str, email: str) -> Optional[sqlite3.Row]:
+    """Return a user row matching *username* or *email* (case-insensitive email)."""
+    return _get_conn().execute(
+        """
+        SELECT id, username, email, role
+        FROM users
+        WHERE lower(username) = lower(?) OR lower(email) = lower(?)
+        """,
+        (username, email),
+    ).fetchone()
 
-    Raises sqlite3.IntegrityError if *username* already exists.
+
+def create_user(
+    username: str, email: str, password: str, role: str = DEFAULT_USER_ROLE
+) -> sqlite3.Row:
+    """
+    Insert a new user with a bcrypt-hashed password and return the created row.
+
+    Raises sqlite3.IntegrityError if *username* or *email* already exists.
     """
     hashed = _pwd_ctx.hash(password)
     with _get_conn() as conn:
-        conn.execute(
-            "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
-            (username, hashed),
+        cursor = conn.execute(
+            "INSERT INTO users (username, email, role, hashed_password) VALUES (?, ?, ?, ?)",
+            (username, email, role, hashed),
         )
         conn.commit()
+        return conn.execute(
+            "SELECT id, username, email, role FROM users WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
