@@ -35,18 +35,15 @@ def _make_nifti_bytes() -> bytes:
     """Generate a minimal NIfTI-1 file in memory."""
     import tempfile
     import nibabel as nib
+    from pathlib import Path
 
     arr = np.zeros((8, 8, 4), dtype=np.float32)
     affine = np.eye(4)
     img = nib.Nifti1Image(arr, affine)
-    with tempfile.NamedTemporaryFile(suffix=".nii", delete=False) as f:
-        tmp_path = f.name
-    nib.save(img, tmp_path)
-    with open(tmp_path, "rb") as f:
-        data = f.read()
-    import os
-    os.unlink(tmp_path)
-    return data
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir) / "volume.nii"
+        nib.save(img, str(tmp_path))
+        return tmp_path.read_bytes()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

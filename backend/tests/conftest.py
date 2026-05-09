@@ -16,6 +16,7 @@ auth_headers        – {"Authorization": "Bearer <signed-test-JWT>"} dict
 
 from datetime import datetime, timedelta, timezone
 import os
+import secrets
 import sys
 
 import jwt
@@ -25,7 +26,7 @@ import pytest
 # ── JWT secret must be set before any app import so that api/deps.py picks it
 # up at module-load time (it reads os.environ at import).  Using setdefault
 # means a value already set in the environment (e.g. from a .env in CI) wins.
-_DEFAULT_TEST_JWT_SECRET = "medvision-pytest-secret-do-not-use-in-production"
+_DEFAULT_TEST_JWT_SECRET = secrets.token_hex(32)
 _ACTIVE_TEST_JWT_SECRET = os.environ.setdefault("JWT_SECRET", _DEFAULT_TEST_JWT_SECRET)
 
 # ── Ensure the backend package root is importable from any working directory
