@@ -17,9 +17,6 @@ The `client` fixture in conftest.py redirects upload/cache dirs to tmp_path
 so no files are written to the real backend/data directory.
 """
 
-import io
-import struct
-
 import numpy as np
 import pytest
 

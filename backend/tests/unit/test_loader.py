@@ -13,7 +13,6 @@ load_image (NIfTI)   – loads a synthetic .nii.gz and checks shape/metadata
 """
 
 import base64
-import io
 
 import numpy as np
 import pytest

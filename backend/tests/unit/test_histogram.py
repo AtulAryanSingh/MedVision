@@ -11,7 +11,6 @@ apply_cdf_threshold   – output dtype (uint8), only 0/255 values, 100th percent
 """
 
 import numpy as np
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────

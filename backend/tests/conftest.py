@@ -14,25 +14,24 @@ anon_client         – FastAPI TestClient with real auth (no bypass)
 auth_headers        – {"Authorization": "Bearer <signed-test-JWT>"} dict
 """
 
+from datetime import datetime, timedelta, timezone
 import os
 import sys
+
+import jwt
+import numpy as np
+import pytest
 
 # ── JWT secret must be set before any app import so that api/deps.py picks it
 # up at module-load time (it reads os.environ at import).  Using setdefault
 # means a value already set in the environment (e.g. from a .env in CI) wins.
-_TEST_JWT_SECRET = "medvision-pytest-secret-do-not-use-in-production"
-os.environ.setdefault("JWT_SECRET", _TEST_JWT_SECRET)
+_DEFAULT_TEST_JWT_SECRET = "medvision-pytest-secret-do-not-use-in-production"
+_ACTIVE_TEST_JWT_SECRET = os.environ.setdefault("JWT_SECRET", _DEFAULT_TEST_JWT_SECRET)
 
 # ── Ensure the backend package root is importable from any working directory
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
-
-from datetime import datetime, timedelta, timezone
-
-import jwt
-import numpy as np
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,12 +96,12 @@ def auth_headers():
     """
     Return an Authorization header dict containing a valid signed test JWT.
 
-    The token is signed with *_TEST_JWT_SECRET* (the same secret injected into
-    os.environ above) so api/deps.get_current_user will accept it.
+    The token is signed with the active JWT secret from os.environ so
+    api/deps.get_current_user will accept it in both local and CI runs.
     """
     expire = datetime.now(timezone.utc) + timedelta(hours=24)
     payload = {"sub": "testuser", "exp": expire}
-    token = jwt.encode(payload, _TEST_JWT_SECRET, algorithm="HS256")
+    token = jwt.encode(payload, _ACTIVE_TEST_JWT_SECRET, algorithm="HS256")
     return {"Authorization": f"Bearer {token}"}
 
 

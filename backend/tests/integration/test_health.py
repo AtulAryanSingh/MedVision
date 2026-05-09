@@ -7,9 +7,6 @@ GET /        – should return 200 with status "ok"
 GET /health  – should return 200 with status "ok"
 """
 
-import pytest
-
-
 class TestHealthEndpoint:
     def test_root_returns_200(self, anon_client):
         response = anon_client.get("/")

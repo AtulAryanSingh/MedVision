@@ -14,9 +14,6 @@ Covers
 • Protected endpoint with valid token → passes auth (delegates to health)
 """
 
-import pytest
-
-
 class TestLogin:
     def test_valid_credentials_return_200(self, anon_client, monkeypatch):
         """
