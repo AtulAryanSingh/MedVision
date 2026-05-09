@@ -45,7 +45,7 @@ class RegisterRequest(BaseModel):
 def register(payload: RegisterRequest):
     existing = db.get_user_by_username_or_email(payload.username, payload.email)
     if existing:
-        if existing["username"] == payload.username:
+        if existing["username"].lower() == payload.username.lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Username already exists.",
@@ -60,7 +60,7 @@ def register(payload: RegisterRequest):
             username=payload.username,
             email=payload.email,
             password=payload.password,
-            role="guest",
+            role=db.DEFAULT_USER_ROLE,
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(

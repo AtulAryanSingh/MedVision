@@ -64,6 +64,27 @@ class TestRegister:
         assert response.status_code == 409
         assert response.json()["detail"] == "Username already exists."
 
+    def test_register_duplicate_username_case_insensitive_returns_409(self, anon_client, monkeypatch):
+        import db
+
+        monkeypatch.setattr(
+            db,
+            "get_user_by_username_or_email",
+            lambda *_: {"username": "Alice", "email": "alice@example.com"},
+        )
+
+        response = anon_client.post(
+            "/api/auth/register",
+            json={
+                "username": "alice",
+                "email": "new@example.com",
+                "password": "StrongPass123!",
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Username already exists."
+
     def test_register_duplicate_email_returns_409(self, anon_client, monkeypatch):
         import db
 

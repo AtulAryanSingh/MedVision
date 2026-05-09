@@ -36,6 +36,7 @@ import config
 logger = logging.getLogger(__name__)
 
 _DB_PATH = config.USERS_DB_PATH
+DEFAULT_USER_ROLE = "guest"
 _pwd_ctx = CryptContext(
     schemes=["bcrypt"],
     bcrypt__rounds=config.BCRYPT_ROUNDS,
@@ -112,19 +113,49 @@ def _migrate_users_table(conn: sqlite3.Connection) -> None:
         row["name"]
         for row in conn.execute("PRAGMA table_info(users)").fetchall()
     }
+    needs_rebuild = False
 
     if "email" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        needs_rebuild = True
     if "role" not in columns:
-        conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'guest'")
+        conn.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'guest'")
+        needs_rebuild = True
 
     conn.execute(
-        "UPDATE users SET email = username || '@legacy.local' WHERE email IS NULL OR trim(email) = ''"
+        """
+        UPDATE users
+        SET email = lower(username) || '.' || id || '@legacy.example.invalid'
+        WHERE email IS NULL OR trim(email) = ''
+        """
     )
-    conn.execute("UPDATE users SET role = 'guest' WHERE role IS NULL OR trim(role) = ''")
     conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)"
+        "UPDATE users SET role = ? WHERE role IS NULL OR trim(role) = ''",
+        (DEFAULT_USER_ROLE,),
     )
+
+    if needs_rebuild:
+        conn.execute("DROP TABLE IF EXISTS users_migrated")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users_migrated (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                username         TEXT    NOT NULL UNIQUE,
+                email            TEXT    NOT NULL UNIQUE,
+                role             TEXT    NOT NULL DEFAULT 'guest',
+                hashed_password  TEXT    NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO users_migrated (id, username, email, role, hashed_password)
+            SELECT id, username, email, role, hashed_password
+            FROM users
+            """
+        )
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_migrated RENAME TO users")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -144,15 +175,17 @@ def get_user_by_username_or_email(username: str, email: str) -> Optional[sqlite3
     """Return a user row matching *username* or *email* (case-insensitive email)."""
     return _get_conn().execute(
         """
-        SELECT id, username, email, role, hashed_password
+        SELECT id, username, email, role
         FROM users
-        WHERE username = ? OR lower(email) = lower(?)
+        WHERE lower(username) = lower(?) OR lower(email) = lower(?)
         """,
         (username, email),
     ).fetchone()
 
 
-def create_user(username: str, email: str, password: str, role: str = "guest") -> sqlite3.Row:
+def create_user(
+    username: str, email: str, password: str, role: str = DEFAULT_USER_ROLE
+) -> sqlite3.Row:
     """
     Insert a new user with a bcrypt-hashed password and return the created row.
 
@@ -160,12 +193,12 @@ def create_user(username: str, email: str, password: str, role: str = "guest") -
     """
     hashed = _pwd_ctx.hash(password)
     with _get_conn() as conn:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO users (username, email, role, hashed_password) VALUES (?, ?, ?, ?)",
             (username, email, role, hashed),
         )
         conn.commit()
         return conn.execute(
-            "SELECT id, username, email, role, hashed_password FROM users WHERE username = ?",
-            (username,),
+            "SELECT id, username, email, role FROM users WHERE id = ?",
+            (cursor.lastrowid,),
         ).fetchone()
