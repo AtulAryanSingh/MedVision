@@ -1,11 +1,16 @@
 /* MedVision v2 – api/client.js
  * Centralised fetch wrapper for all API calls.
  */
+import { getAuthToken } from '../auth.js'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 async function _req(method, path, body, isForm = false) {
   const opts = { method, headers: {} }
+  const token = getAuthToken()
+  if (token) {
+    opts.headers.Authorization = `Bearer ${token}`
+  }
   if (body) {
     if (isForm) {
       opts.body = body
@@ -23,6 +28,17 @@ async function _req(method, path, body, isForm = false) {
 }
 
 export const api = {
+  login(username, password) {
+    const form = new URLSearchParams()
+    form.set('username', username)
+    form.set('password', password)
+    return _req('POST', '/api/auth/login', form, true)
+  },
+
+  signup(username, email, password) {
+    return _req('POST', '/api/auth/register', { username, email, password })
+  },
+
   upload(file) {
     const fd = new FormData()
     fd.append('file', file)
