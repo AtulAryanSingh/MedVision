@@ -8,6 +8,9 @@ import Patchify      from './pages/Patchify.jsx'
 import DeepLearning  from './pages/DeepLearning.jsx'
 import Downloads     from './pages/Downloads.jsx'
 import Registration  from './pages/Registration.jsx'
+import Login         from './pages/Login.jsx'
+import Signup        from './pages/Signup.jsx'
+import { getStoredAuth, saveAuth, clearAuth } from './auth.js'
 
 const NAV = [
   { id: 'home',      icon: '🏠', label: 'Home',          section: 'main' },
@@ -23,7 +26,31 @@ const NAV = [
 
 const SECTION_LABELS = { main: 'Explorer', viewer: 'Viewer', tools: 'Tools', exports: 'Export' }
 
+function AuthGate({ mode, onSwitchMode, onAuthSuccess }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '1.5rem' }}>
+      <div style={{ width: '100%', maxWidth: 820, display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem' }}>
+        <div className="card">
+          <div className="card-body" style={{ padding: '1.25rem 1.5rem' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-.5px' }}>🔬 MedVision</h1>
+            <p className="text-muted" style={{ marginTop: '.35rem' }}>
+              Sign in to access protected imaging APIs (upload, preview, MPR, processing, exports).
+            </p>
+          </div>
+        </div>
+        {mode === 'signup' ? (
+          <Signup onSuccess={onAuthSuccess} onSwitchToLogin={() => onSwitchMode('login')} />
+        ) : (
+          <Login onSuccess={onAuthSuccess} onSwitchToSignup={() => onSwitchMode('signup')} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
+  const [auth, setAuth] = useState(() => getStoredAuth())
+  const [authMode, setAuthMode] = useState('login')
   const [page,     setPage]     = useState('home')
   const [imageId,  setImageId]  = useState(null)
   const [metadata, setMetadata] = useState(null)
@@ -38,6 +65,23 @@ export default function App() {
     setImageId(id)
     setMetadata(meta)
     setPage('workspace')
+  }
+
+  function handleAuthSuccess({ token, username }) {
+    saveAuth(token, username)
+    setAuth({ token, username })
+    setPage('data')
+  }
+
+  function handleLogout() {
+    clearAuth()
+    setAuth({ token: null, username: null })
+    handleReset()
+    setAuthMode('login')
+  }
+
+  if (!auth.token) {
+    return <AuthGate mode={authMode} onSwitchMode={setAuthMode} onAuthSuccess={handleAuthSuccess} />
   }
 
   function renderPage() {
@@ -89,6 +133,10 @@ export default function App() {
           })}
         </nav>
         <div className="sidebar-footer">Medical Imaging Platform</div>
+        <div style={{ padding: '.7rem 1rem', borderTop: '1px solid var(--border)' }}>
+          {auth.username && <div className="text-muted" style={{ marginBottom: '.4rem' }}>Signed in as <strong>{auth.username}</strong></div>}
+          <button className="btn btn-outline btn-sm w-full" onClick={handleLogout}>Log out</button>
+        </div>
       </aside>
 
       <div className="app-content">

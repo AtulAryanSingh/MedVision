@@ -101,6 +101,10 @@ npm run dev
 # App: http://localhost:5173
 ```
 
+Frontend now includes built-in **Signup** and **Login** screens.  
+After login, the JWT is persisted in `localStorage` and automatically sent as
+`Authorization: Bearer <token>` on API calls.
+
 ### 3 – Production build
 
 ```bash
@@ -285,6 +289,7 @@ pytest --cov=. --cov-report=term-missing
 - `image_id` is validated as a UUID (parsed with `uuid.UUID()` and re-serialised before any path operation) to prevent path-traversal attacks.
 - No credentials or patient data are committed. The `data/` directory is git-ignored.
 - Copy `.env.example` to `.env` and set a stable `JWT_SECRET` before production deployment.
+- Frontend JWT persistence currently uses `localStorage` for simplicity. This is acceptable for local/dev use, but in production a cookie-based flow with `HttpOnly` + `Secure` + `SameSite` should be preferred to reduce XSS token exposure risk.
 
 ### Auth API quick call (registration)
 
@@ -312,6 +317,25 @@ Success (`201`):
 ```
 
 Duplicate username/email returns `409`.
+
+### Auth API quick call (login)
+
+`POST /api/auth/login` (expects form-encoded fields via `OAuth2PasswordRequestForm`)
+
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=alice&password=StrongPass123!"
+```
+
+Success (`200`):
+
+```json
+{
+  "access_token": "<jwt>",
+  "token_type": "bearer"
+}
+```
 
 ---
 
