@@ -67,10 +67,13 @@ export default function App() {
   const [metadata, setMetadata] = useState(null)
 
   useEffect(() => {
-    const onPopState = () => setAuthMode(getAuthModeFromPath())
+    const onPopState = () => {
+      if (auth.token) return
+      setAuthMode(getAuthModeFromPath())
+    }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [])
+  }, [auth.token])
 
   useEffect(() => {
     if (!auth.token) {
