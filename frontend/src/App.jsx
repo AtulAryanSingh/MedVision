@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Home          from './pages/Home.jsx'
 import DataManager   from './pages/DataManager.jsx'
 import Workspace     from './pages/Workspace.jsx'
@@ -26,6 +26,17 @@ const NAV = [
 
 const SECTION_LABELS = { main: 'Explorer', viewer: 'Viewer', tools: 'Tools', exports: 'Export' }
 
+function getAuthModeFromPath() {
+  return window.location.pathname === '/signup' ? 'signup' : 'login'
+}
+
+function setAuthPath(mode) {
+  const path = mode === 'signup' ? '/signup' : '/login'
+  if (window.location.pathname !== path) {
+    window.history.replaceState(null, '', path)
+  }
+}
+
 function AuthGate({ mode, onSwitchMode, onAuthSuccess }) {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '1.5rem' }}>
@@ -50,10 +61,25 @@ function AuthGate({ mode, onSwitchMode, onAuthSuccess }) {
 
 export default function App() {
   const [auth, setAuth] = useState(() => getStoredAuth())
-  const [authMode, setAuthMode] = useState('login')
+  const [authMode, setAuthMode] = useState(() => getAuthModeFromPath())
   const [page,     setPage]     = useState('home')
   const [imageId,  setImageId]  = useState(null)
   const [metadata, setMetadata] = useState(null)
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (auth.token) return
+      setAuthMode(getAuthModeFromPath())
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [auth.token])
+
+  useEffect(() => {
+    if (!auth.token) {
+      setAuthPath(authMode)
+    }
+  }, [auth.token, authMode])
 
   function handleReset() {
     setImageId(null)
@@ -71,6 +97,9 @@ export default function App() {
     saveAuth(token, username)
     setAuth({ token, username })
     setPage('data')
+    if (window.location.pathname === '/login' || window.location.pathname === '/signup') {
+      window.history.replaceState(null, '', '/')
+    }
   }
 
   function handleLogout() {
@@ -78,6 +107,7 @@ export default function App() {
     setAuth({ token: null, username: null })
     handleReset()
     setAuthMode('login')
+    setAuthPath('login')
   }
 
   if (!auth.token) {
