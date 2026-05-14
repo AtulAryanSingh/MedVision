@@ -22,7 +22,7 @@ function isTokenUsable(token) {
   if (!token || typeof token !== 'string') return false
   const payload = decodeJwtPayload(token)
   if (!payload) return false
-  if (payload.exp == null) return true
+  if (payload.exp === null || payload.exp === undefined) return true
   return payload.exp * 1000 > Date.now()
 }
 

@@ -26,6 +26,17 @@ const NAV = [
 
 const SECTION_LABELS = { main: 'Explorer', viewer: 'Viewer', tools: 'Tools', exports: 'Export' }
 
+function getAuthModeFromPath() {
+  return window.location.pathname === '/signup' ? 'signup' : 'login'
+}
+
+function setAuthPath(mode) {
+  const path = mode === 'signup' ? '/signup' : '/login'
+  if (window.location.pathname !== path) {
+    window.history.replaceState(null, '', path)
+  }
+}
+
 function AuthGate({ mode, onSwitchMode, onAuthSuccess }) {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '1.5rem' }}>
@@ -49,14 +60,6 @@ function AuthGate({ mode, onSwitchMode, onAuthSuccess }) {
 }
 
 export default function App() {
-  const getAuthModeFromPath = () => (window.location.pathname === '/signup' ? 'signup' : 'login')
-  const setAuthPath = (mode) => {
-    const path = mode === 'signup' ? '/signup' : '/login'
-    if (window.location.pathname !== path) {
-      window.history.replaceState(null, '', path)
-    }
-  }
-
   const [auth, setAuth] = useState(() => getStoredAuth())
   const [authMode, setAuthMode] = useState(() => getAuthModeFromPath())
   const [page,     setPage]     = useState('home')
