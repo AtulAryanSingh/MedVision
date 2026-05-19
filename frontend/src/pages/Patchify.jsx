@@ -1,8 +1,10 @@
 /**
  * pages/Patchify.jsx – 3D volume → patches + NPZ download
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
+import AsyncJobPanel from '../components/AsyncJobPanel.jsx'
+import { JOB_POLL_INTERVAL_MS, JOB_TERMINAL_STATES } from '../constants/async.js'
 
 function estimatePatches(shape, ps, stride) {
   if (!shape || shape.length < 3) return null
@@ -20,31 +22,60 @@ export default function Patchify({ imageId, metadata }) {
   const [result,    setResult]    = useState(null)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState(null)
+  const [job,       setJob]       = useState(null)
 
   const shape   = metadata?.shape || []
   const is3d    = metadata?.is_3d || false
   const est     = is3d ? estimatePatches(shape, patchSize, stride) : null
   const overlap = patchSize - stride
 
+  useEffect(() => {
+    if (!job || JOB_TERMINAL_STATES.includes(job.status)) return
+    const t = setInterval(async () => {
+      try {
+        const j = await api.getJob(job.job_id)
+        setJob(j)
+        if (j.status === 'succeeded') {
+          const out = await api.getJobResult(j.job_id)
+          setResult(out)
+        }
+      } catch (e) {
+        setError(e.message)
+      }
+    }, JOB_POLL_INTERVAL_MS)
+    return () => clearInterval(t)
+  }, [job])
+
   async function run() {
     if (!imageId) return
     setLoading(true); setError(null)
     try {
-      const r = await api.patchify(imageId, patchSize, stride)
-      setResult(r)
+      setResult(null)
+      const created = await api.createPatchifyJob(imageId, patchSize, stride)
+      setJob(created)
     } catch (e) { setError(e.message) }
     finally     { setLoading(false) }
   }
 
-  function downloadNpz(npzB64, filename) {
-    const bytes  = atob(npzB64)
-    const buf    = new Uint8Array(bytes.length)
-    for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i)
-    const blob   = new Blob([buf], { type: 'application/octet-stream' })
-    const url    = URL.createObjectURL(blob)
-    const a      = Object.assign(document.createElement('a'), { href: url, download: filename })
+  function downloadFromUrl(url, filename) {
+    const a = Object.assign(document.createElement('a'), { href: url, download: filename })
     a.click()
-    URL.revokeObjectURL(url)
+  }
+
+  async function refreshJob() {
+    if (!job?.job_id) return
+    const j = await api.getJob(job.job_id)
+    setJob(j)
+    if (j.status === 'succeeded') {
+      const out = await api.getJobResult(j.job_id)
+      setResult(out)
+    }
+  }
+
+  async function cancelJob() {
+    if (!job?.job_id) return
+    const j = await api.cancelJob(job.job_id)
+    setJob(j)
   }
 
   return (
@@ -97,7 +128,7 @@ export default function Patchify({ imageId, metadata }) {
             </div>
 
             <button className="btn btn-primary" onClick={run} disabled={loading}>
-              {loading ? <><span className="spinner" /> Patching…</> : '🧩 Extract Patches'}
+              {loading ? <><span className="spinner" /> Queuing…</> : '🧩 Extract Patches'}
             </button>
           </div>
 
@@ -114,6 +145,15 @@ export default function Patchify({ imageId, metadata }) {
           </div>
 
           {error && <div className="alert alert-error" style={{ marginBottom: '1rem' }}>⚠️ {error}</div>}
+          {job && (
+            <AsyncJobPanel
+              title="Patchify job"
+              job={job}
+              onRefresh={refreshJob}
+              onCancel={cancelJob}
+              onRetry={run}
+            />
+          )}
 
           {result && (
             <div className="card">
@@ -121,7 +161,7 @@ export default function Patchify({ imageId, metadata }) {
                 <span className="card-title">✅ Patchify complete</span>
                 <button
                   className="btn btn-teal btn-sm"
-                  onClick={() => downloadNpz(result.npz_b64, `patches_${imageId.slice(0, 8)}.npz`)}
+                  onClick={() => downloadFromUrl(api.jobResultStreamUrl(job.job_id), `patches_${imageId.slice(0, 8)}.npz`)}
                 >
                   ⬇ Download .npz
                 </button>

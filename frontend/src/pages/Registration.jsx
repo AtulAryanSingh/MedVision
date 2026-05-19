@@ -10,9 +10,11 @@
  * Interpolation: bicubic (order=3) for images, nearest-neighbour (order=0)
  * for binary masks.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { api } from '../api/client.js'
+import AsyncJobPanel from '../components/AsyncJobPanel.jsx'
+import { JOB_POLL_INTERVAL_MS, JOB_TERMINAL_STATES } from '../constants/async.js'
 
 const TOOLTIP_STYLE = { background: '#fff', border: '1px solid #e2e8f0', fontSize: 12, borderRadius: 6 }
 
@@ -74,6 +76,24 @@ function TransformCard({ tf, imageId }) {
   const [result,  setResult]  = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
+  const [job,     setJob]     = useState(null)
+
+  useEffect(() => {
+    if (!job || JOB_TERMINAL_STATES.includes(job.status)) return
+    const t = setInterval(async () => {
+      try {
+        const j = await api.getJob(job.job_id)
+        setJob(j)
+        if (j.status === 'succeeded') {
+          const out = await api.getJobResult(j.job_id)
+          setResult(out)
+        }
+      } catch (e) {
+        setError(e.message)
+      }
+    }, JOB_POLL_INTERVAL_MS)
+    return () => clearInterval(t)
+  }, [job])
 
   function buildPayload() {
     if (tf.id === 'affine') {
@@ -91,10 +111,27 @@ function TransformCard({ tf, imageId }) {
     if (!imageId) return
     setLoading(true); setError(null)
     try {
-      const r = await api.register(imageId, tf.id, buildPayload())
-      setResult(r)
+      setResult(null)
+      const created = await api.createRegisterJob(imageId, tf.id, buildPayload())
+      setJob(created)
     } catch (e) { setError(e.message) }
     finally     { setLoading(false) }
+  }
+
+  async function refreshJob() {
+    if (!job?.job_id) return
+    const j = await api.getJob(job.job_id)
+    setJob(j)
+    if (j.status === 'succeeded') {
+      const out = await api.getJobResult(j.job_id)
+      setResult(out)
+    }
+  }
+
+  async function cancelJob() {
+    if (!job?.job_id) return
+    const j = await api.cancelJob(job.job_id)
+    setJob(j)
   }
 
   return (
@@ -136,6 +173,17 @@ function TransformCard({ tf, imageId }) {
         </label>
 
         {error && <div className="alert alert-error" style={{ marginTop: '.5rem', fontSize: '.78rem' }}>⚠️ {error}</div>}
+        {job && (
+          <div style={{ marginTop: '.6rem' }}>
+            <AsyncJobPanel
+              title={`${tf.name} job`}
+              job={job}
+              onRefresh={refreshJob}
+              onCancel={cancelJob}
+              onRetry={run}
+            />
+          </div>
+        )}
       </div>
 
       {result && (

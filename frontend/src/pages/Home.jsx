@@ -61,9 +61,9 @@ export default function Home({ onNavigate }) {
           MedVision
         </h1>
         <p style={{ marginTop: '.6rem', fontSize: '1rem', color: 'var(--text-secondary)', maxWidth: 580, lineHeight: 1.7 }}>
-          A modular medical-imaging workbench. Upload any clinical image, explore it with
-          clinically-accurate Multi-Planar Reconstruction, run independent tools in any order,
-          and export results for downstream analysis or deep-learning pipelines.
+          A modular imaging workflow layer for clinical operations and ML experimentation.
+          Ingest raw imaging data, run independent modules in any order, orchestrate longer
+          workloads asynchronously, and export reproducible artifacts for downstream pipelines.
         </p>
         <div style={{ marginTop: '1.2rem', display: 'flex', gap: '.75rem', flexWrap: 'wrap' }}>
           <button className="btn btn-primary btn-lg" onClick={() => onNavigate('data')}>

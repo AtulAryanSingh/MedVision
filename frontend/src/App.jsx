@@ -162,7 +162,7 @@ export default function App() {
             )
           })}
         </nav>
-        <div className="sidebar-footer">Medical Imaging Platform</div>
+        <div className="sidebar-footer">Imaging Workflow Platform</div>
         <div style={{ padding: '.7rem 1rem', borderTop: '1px solid var(--border)' }}>
           {auth.username && <div className="text-muted" style={{ marginBottom: '.4rem' }}>Signed in as <strong>{auth.username}</strong></div>}
           <button className="btn btn-outline btn-sm w-full" onClick={handleLogout}>Log out</button>
