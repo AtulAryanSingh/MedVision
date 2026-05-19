@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
 import AsyncJobPanel from '../components/AsyncJobPanel.jsx'
+import { JOB_POLL_INTERVAL_MS, JOB_TERMINAL_STATES } from '../constants/async.js'
 
 function estimatePatches(shape, ps, stride) {
   if (!shape || shape.length < 3) return null
@@ -29,7 +30,7 @@ export default function Patchify({ imageId, metadata }) {
   const overlap = patchSize - stride
 
   useEffect(() => {
-    if (!job || ['succeeded', 'failed', 'canceled'].includes(job.status)) return
+    if (!job || JOB_TERMINAL_STATES.includes(job.status)) return
     const t = setInterval(async () => {
       try {
         const j = await api.getJob(job.job_id)
@@ -41,7 +42,7 @@ export default function Patchify({ imageId, metadata }) {
       } catch (e) {
         setError(e.message)
       }
-    }, 1200)
+    }, JOB_POLL_INTERVAL_MS)
     return () => clearInterval(t)
   }, [job])
 

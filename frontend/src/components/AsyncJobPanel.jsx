@@ -1,8 +1,10 @@
+import { JOB_TERMINAL_STATES } from '../constants/async.js'
+
 export default function AsyncJobPanel({ job, onRefresh, onCancel, onRetry, title = 'Async job' }) {
   if (!job) return null
 
   const status = job.status || 'queued'
-  const terminal = ['succeeded', 'failed', 'canceled'].includes(status)
+  const terminal = JOB_TERMINAL_STATES.includes(status)
   const progress = Number.isFinite(job.progress) ? Math.max(0, Math.min(100, job.progress)) : 0
 
   return (

@@ -24,13 +24,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          set -euxo pipefail
+          set -eo pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Validate environment baseline
         run: |
-          set -euxo pipefail
+          set -eo pipefail
           python - <<'PY'
           import os
           upload_dir = os.environ.get("UPLOAD_DIR", "")

@@ -1,7 +1,5 @@
-import csv
-import io
 import os
-from typing import Any
+from typing import Any, Callable
 
 import cv2
 import numpy as np
@@ -19,7 +17,6 @@ from jobs.orchestrator import create_job, get_job, get_result, request_cancel, s
 from ml.clustering import run_kmeans
 from ml.reduction import run_pca
 from processing.histogram import compute_histogram
-from processing.morphology import label_connected_components
 
 router = APIRouter()
 
@@ -36,7 +33,12 @@ def _exports_dir() -> str:
     return path
 
 
-async def _patchify_worker(req: PatchifyRequest, job_id: str, update_progress, is_canceled):
+async def _patchify_worker(
+    req: PatchifyRequest,
+    job_id: str,
+    update_progress: Callable[[int, str], None],
+    is_canceled: Callable[[], bool],
+):
     meta = load_metadata(req.image_id)
     if not meta.get("is_3d", False):
         raise ValueError("Patchify requires a 3-D volume.")
@@ -66,7 +68,7 @@ async def _patchify_worker(req: PatchifyRequest, job_id: str, update_progress, i
 
     if not patches:
         raise ValueError(
-            f"Volume {D}×{H}×{W} is too small for patch size {ps}. "
+            f"Volume {D}x{H}x{W} is too small for patch size {ps}. "
             f"All dimensions must be ≥ {ps} voxels."
         )
 
@@ -90,7 +92,12 @@ async def _patchify_worker(req: PatchifyRequest, job_id: str, update_progress, i
     }
 
 
-async def _cluster_worker(req: ClusterRequest, _job_id: str, update_progress, is_canceled):
+async def _cluster_worker(
+    req: ClusterRequest,
+    _job_id: str,
+    update_progress: Callable[[int, str], None],
+    is_canceled: Callable[[], bool],
+):
     load_metadata(req.image_id)
     path = find_uploaded_file(req.image_id)
     arr, _ = await async_load_image(path)
@@ -114,7 +121,7 @@ async def _cluster_worker(req: ClusterRequest, _job_id: str, update_progress, is
     all_labels = km_for_labels.fit_predict(pixels)
     order = np.argsort(km_for_labels.cluster_centers_.flatten())
     remap = {old: new for new, old in enumerate(order)}
-    all_labels = np.array([remap[l] for l in all_labels])
+    all_labels = np.array([remap[label] for label in all_labels])
 
     update_progress(70, "Running PCA")
     pca_result = run_pca(arr, n_components=2, n_samples=req.n_samples, k_labels=all_labels)
@@ -133,7 +140,12 @@ async def _cluster_worker(req: ClusterRequest, _job_id: str, update_progress, is
     }
 
 
-async def _report_worker(image_id: str, _job_id: str, update_progress, is_canceled):
+async def _report_worker(
+    image_id: str,
+    _job_id: str,
+    update_progress: Callable[[int, str], None],
+    is_canceled: Callable[[], bool],
+):
     meta = load_metadata(image_id)
     features = meta.get("features")
 
@@ -163,7 +175,12 @@ async def _report_worker(image_id: str, _job_id: str, update_progress, is_cancel
     return report
 
 
-async def _register_worker(req: RegisterRequest, _job_id: str, update_progress, _is_canceled):
+async def _register_worker(
+    req: RegisterRequest,
+    _job_id: str,
+    update_progress: Callable[[int, str], None],
+    _is_canceled: Callable[[], bool],
+):
     from scipy.ndimage import affine_transform, rotate, zoom
 
     load_metadata(req.image_id)

@@ -41,10 +41,11 @@ from api.jobs      import router as jobs_router
 from labs.core_imaging.routes import router as core_imaging_router
 
 # ── App factory ────────────────────────────────────────────────────────────
+APP_VERSION = "1.1.0"
 
 app = FastAPI(
     title="MedVision API",
-    version="1.1.0",
+    version=APP_VERSION,
     description=(
         "MedVision is a modular imaging workflow layer that bridges "
         "raw clinical data handling and ML experimentation. "
@@ -158,6 +159,6 @@ def root():
     """Return a simple health-check payload so operators can verify the API is up."""
     return {
         "status": "ok",
-        "version": "1.1.0",
+        "version": APP_VERSION,
         "modules": ["upload", "preview", "processing", "features", "ml", "analysis"],
     }

@@ -22,12 +22,12 @@ def _upload_nifti(client, tmp_path) -> str:
     vol_nib = np.transpose(vol, (2, 1, 0))
     affine = np.diag([1.2, 1.2, 2.5, 1.0])
     img = nib.Nifti1Image(vol_nib, affine)
-    path = tmp_path / 'job_volume.nii.gz'
+    path = tmp_path / 'job_volume.nii'
     nib.save(img, path)
 
     with open(path, 'rb') as fh:
         raw = fh.read()
-    resp = client.post('/api/upload', files={'file': ('job_volume.nii.gz', raw, 'application/octet-stream')})
+    resp = client.post('/api/upload', files={'file': ('job_volume.nii', raw, 'application/octet-stream')})
     assert resp.status_code == 200, resp.text
     return resp.json()['image_id']
 

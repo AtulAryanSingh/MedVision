@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from api import get_cache_dir
 TERMINAL_STATES = {"succeeded", "failed", "canceled"}
 
 _TASKS: dict[str, asyncio.Task] = {}
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -23,11 +25,16 @@ def _jobs_dir() -> str:
 
 
 def _job_path(job_id: str) -> str:
-    return os.path.join(_jobs_dir(), f"{job_id}.json")
+    # Validate and canonicalize UUID so user-provided IDs cannot alter paths.
+    safe_job_id = str(uuid.UUID(job_id))
+    return os.path.join(_jobs_dir(), f"{safe_job_id}.json")
 
 
 def _read_job(job_id: str) -> dict[str, Any]:
-    path = _job_path(job_id)
+    try:
+        path = _job_path(job_id)
+    except (ValueError, AttributeError) as exc:
+        raise FileNotFoundError(job_id) from exc
     if not os.path.isfile(path):
         raise FileNotFoundError(job_id)
     with open(path) as fh:
@@ -157,6 +164,7 @@ def start_job(
                 finished_at=_now_iso(),
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("Async job %s failed", job_id)
             _mark(
                 job_id,
                 status="failed",

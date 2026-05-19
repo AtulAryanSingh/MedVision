@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts'
 import { api } from '../api/client.js'
 import AsyncJobPanel from '../components/AsyncJobPanel.jsx'
+import { JOB_POLL_INTERVAL_MS, JOB_TERMINAL_STATES } from '../constants/async.js'
 
 const TOOLTIP_STYLE = { background: '#fff', border: '1px solid #e2e8f0', fontSize: 12, borderRadius: 6 }
 
@@ -78,7 +79,7 @@ function TransformCard({ tf, imageId }) {
   const [job,     setJob]     = useState(null)
 
   useEffect(() => {
-    if (!job || ['succeeded', 'failed', 'canceled'].includes(job.status)) return
+    if (!job || JOB_TERMINAL_STATES.includes(job.status)) return
     const t = setInterval(async () => {
       try {
         const j = await api.getJob(job.job_id)
@@ -90,7 +91,7 @@ function TransformCard({ tf, imageId }) {
       } catch (e) {
         setError(e.message)
       }
-    }, 1200)
+    }, JOB_POLL_INTERVAL_MS)
     return () => clearInterval(t)
   }, [job])
 

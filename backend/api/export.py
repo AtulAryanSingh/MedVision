@@ -24,6 +24,7 @@ from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from api import find_uploaded_file, load_metadata
 from core.loader import async_load_image, get_slice_2d, normalise_to_uint8
+from core.streaming import STREAM_CHUNK_SIZE
 from processing.morphology import label_connected_components
 
 router = APIRouter()
@@ -110,7 +111,7 @@ async def export_npy_stream(image_id: str):
     np.save(buf, arr)
     buf.seek(0)
 
-    def _iter_chunks(chunk_size: int = 1024 * 256):
+    def _iter_chunks(chunk_size: int = STREAM_CHUNK_SIZE):
         while True:
             chunk = buf.read(chunk_size)
             if not chunk:
