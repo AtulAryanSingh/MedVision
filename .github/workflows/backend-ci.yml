@@ -24,15 +24,27 @@ jobs:
 
       - name: Install dependencies
         run: |
+          set -euxo pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Validate environment baseline
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import os
+          upload_dir = os.environ.get("UPLOAD_DIR", "")
+          cache_dir = os.environ.get("CACHE_DIR", "")
+          assert isinstance(upload_dir, str)
+          assert isinstance(cache_dir, str)
+          PY
 
       - name: Lint
         run: ruff check tests config.py main.py api/__init__.py api/deps.py db.py
 
       - name: Run tests
         env:
-          JWT_SECRET: ci-test-secret
+          JWT_SECRET: ci-test-secret-with-minimum-32-bytes-length
         run: pytest -q
 
   docker-build:

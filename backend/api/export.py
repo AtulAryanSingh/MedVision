@@ -20,7 +20,7 @@ import io
 import cv2
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response, PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from api import find_uploaded_file, load_metadata
 from core.loader import async_load_image, get_slice_2d, normalise_to_uint8
@@ -92,6 +92,36 @@ async def export_npy(image_id: str):
         "dtype": str(arr.dtype),
         "npy_b64": npy_b64,
     }
+
+
+@router.get("/export/{image_id}/npy/stream", summary="Download full array as streamed .npy")
+async def export_npy_stream(image_id: str):
+    """
+    Stream the full NumPy array as a binary .npy download.
+
+    This endpoint avoids base64 JSON overhead for large arrays while keeping
+    /export/{image_id}/npy available for backward compatibility.
+    """
+    load_metadata(image_id)
+    path = find_uploaded_file(image_id)
+    arr, _ = await async_load_image(path)
+
+    buf = io.BytesIO()
+    np.save(buf, arr)
+    buf.seek(0)
+
+    def _iter_chunks(chunk_size: int = 1024 * 256):
+        while True:
+            chunk = buf.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+    return StreamingResponse(
+        _iter_chunks(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="medvision_{image_id[:8]}.npy"'},
+    )
 
 
 # ── CSV metrics export ────────────────────────────────────────────────────────

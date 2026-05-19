@@ -3,9 +3,10 @@
 > **v2 – Multi-page Modular Medical-Imaging Workbench**  
 > FastAPI backend · React + Vite frontend · White-background clinical UI
 
-A clinician-friendly platform for exploring medical images (DICOM, NIfTI, PNG/JPEG).
-Every tool is **independent** — run Gaussian blur, Sobel edges, morphology, segmentation,
-patchify, or export in **any order, on demand**. No forced pipeline.
+A modular imaging workflow platform for clinical data operations (DICOM, NIfTI, PNG/JPEG)
+that bridges raw imaging handling and ML experimentation.
+Every module is **independent** — run Gaussian blur, Sobel edges, morphology, segmentation,
+patchify, registration, clustering, reporting, or export in **any order, on demand**.
 
 ---
 
@@ -152,6 +153,9 @@ pytest --cov=. --cov-report=term-missing
 
 ## Backend API Reference
 
+The API now supports both compatibility synchronous routes and async orchestration routes
+for long-running imaging workloads.
+
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/upload` | Upload a file; returns `image_id` + metadata |
@@ -165,7 +169,16 @@ pytest --cov=. --cov-report=term-missing
 | `POST` | `/api/register` | Apply geometric transform (translate/rotate/zoom/affine) |
 | `GET` | `/api/export/{id}/png` | Download middle slice as PNG |
 | `GET` | `/api/export/{id}/npy` | Download full array as .npy (base64) |
+| `GET` | `/api/export/{id}/npy/stream` | Stream full array as binary `.npy` |
 | `GET` | `/api/export/{id}/csv` | Download component metrics as CSV |
+| `POST` | `/api/jobs/patchify` | Queue async patchify job |
+| `POST` | `/api/jobs/cluster` | Queue async cluster job |
+| `POST` | `/api/jobs/report/{id}` | Queue async report-generation job |
+| `POST` | `/api/jobs/register` | Queue async registration job |
+| `GET` | `/api/jobs/{job_id}` | Query job status and progress |
+| `POST` | `/api/jobs/{job_id}/cancel` | Request job cancellation |
+| `GET` | `/api/jobs/{job_id}/result` | Fetch completed job result |
+| `GET` | `/api/jobs/{job_id}/result/stream` | Stream artifact result (when available) |
 
 Full interactive docs at **`http://127.0.0.1:8000/docs`** (Swagger UI).
 
@@ -187,6 +200,7 @@ Full interactive docs at **`http://127.0.0.1:8000/docs`** (Swagger UI).
 | `bounding_boxes` | `threshold` (0–255) | Bounding-box overlay |
 
 Each tool returns `result_image` (base64 PNG) + `histogram_before` + `histogram_after`.
+For production workflows, prefer async job routes for heavier operations.
 
 ---
 

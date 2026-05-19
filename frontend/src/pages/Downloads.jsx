@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { api } from '../api/client.js'
 
 export default function Downloads({ imageId }) {
-  const [npyStatus, setNpyStatus] = useState(null) // null | 'loading' | 'done' | 'error'
+  const [npyStatus, setNpyStatus] = useState(null) // null | 'loading' | 'done'
   const [npyError,  setNpyError]  = useState(null)
 
   function download(url, filename) {
@@ -19,13 +19,10 @@ export default function Downloads({ imageId }) {
     if (!imageId) return
     setNpyStatus('loading'); setNpyError(null)
     try {
-      const res  = await api.exportNpy(imageId)
-      const buf  = Uint8Array.from(atob(res.npy_b64), c => c.charCodeAt(0))
-      const blob = new Blob([buf], { type: 'application/octet-stream' })
-      download(URL.createObjectURL(blob), `medvision_${imageId.slice(0, 8)}.npy`)
+      download(api.exportUrl.npyStream(imageId), `medvision_${imageId.slice(0, 8)}.npy`)
       setNpyStatus('done')
     } catch (e) {
-      setNpyError(e.message); setNpyStatus('error')
+      setNpyError(e.message); setNpyStatus(null)
     }
   }
 
