@@ -31,13 +31,19 @@ export default function Workspace({ imageId, metadata }) {
   const is3d   = metadata?.is_3d  || false
   const sp     = metadata?.spacing || [1, 1, 1]
   const effectiveSpacing = (Array.isArray(mpr?.spacing_mm) && mpr.spacing_mm.length >= 3) ? mpr.spacing_mm : sp
-  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = effectiveSpacing
-  const clamp = (val, min, max) => Math.min(max, Math.max(min, val))
-  const calculateScaleY = (axisSpacing, referenceSpacing) => (
-    referenceSpacing > 0 && axisSpacing > 0 ? clamp(axisSpacing / referenceSpacing, 0.1, 10) : 1
-  )
-  const coronalScaleY = calculateScaleY(zSpacing, ySpacing)
-  const sagittalScaleY = calculateScaleY(zSpacing, xSpacing)
+  
+  // Destructure dimensions and spacing safely
+  const [zDim = 1, yDim = 1, xDim = 1] = shape;
+  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = effectiveSpacing;
+  
+  // Calculate true physical aspect ratios (Width / Height)
+  // Axial: Width is X, Height is Y
+  const axialRatio = (xDim * xSpacing) / (yDim * ySpacing) || 1;
+  // Coronal: Width is X, Height is Z
+  const coronalRatio = (xDim * xSpacing) / (zDim * zSpacing) || 1;
+  // Sagittal: Width is Y, Height is Z
+  const sagittalRatio = (yDim * ySpacing) / (zDim * zSpacing) || 1;
+
   const fov    = is3d && shape.length >= 3
     ? { z: (shape[0] * sp[0]).toFixed(1), y: (shape[1] * (sp[1]??1)).toFixed(1), x: (shape[2] * (sp[2]??1)).toFixed(1) }
     : null
@@ -80,15 +86,10 @@ export default function Workspace({ imageId, metadata }) {
   }
 
   const PANELS = [
-    { key: 'axial',    label: 'Axial (Z)',    axis: 'axial',    max: shape[0] - 1, sp_row: sp[1]??1, sp_col: sp[2]??1 },
-    { key: 'coronal',  label: 'Coronal (Y)',  axis: 'coronal',  max: shape[1] - 1, sp_row: sp[0]??1, sp_col: sp[2]??1 },
-    { key: 'sagittal', label: 'Sagittal (X)', axis: 'sagittal', max: shape[2] - 1, sp_row: sp[0]??1, sp_col: sp[1]??1 },
+    { key: 'axial',    label: 'Axial (Z)',    axis: 'axial',    max: zDim - 1, sp_row: ySpacing, sp_col: xSpacing, aspectRatio: axialRatio },
+    { key: 'coronal',  label: 'Coronal (Y)',  axis: 'coronal',  max: yDim - 1, sp_row: zSpacing, sp_col: xSpacing, aspectRatio: coronalRatio },
+    { key: 'sagittal', label: 'Sagittal (X)', axis: 'sagittal', max: xDim - 1, sp_row: zSpacing, sp_col: ySpacing, aspectRatio: sagittalRatio },
   ]
-  const panelStyles = {
-    axial: undefined,
-    coronal: { transform: `scaleY(${coronalScaleY})`, transformOrigin: 'center center' },
-    sagittal: { transform: `scaleY(${sagittalScaleY})`, transformOrigin: 'center center' },
-  }
 
   return (
     <div className="page">
@@ -151,7 +152,7 @@ export default function Workspace({ imageId, metadata }) {
           {/* MPR panels */}
           <div className="mpr-grid">
             {PANELS.map(panel => (
-              <div key={panel.key} className="mpr-panel">
+              <div key={panel.key} className="mpr-panel" style={{ display: 'flex', flexDirection: 'column' }}>
                 <div className="mpr-header">
                   <span className="mpr-header-label">{panel.label}</span>
                   {mpr?.spacing_mm && (
@@ -161,10 +162,21 @@ export default function Workspace({ imageId, metadata }) {
                   )}
                 </div>
 
-                <div className="mpr-img-wrap">
+                {/* The Fix: Container uses exact physical aspect ratio, image uses object-fit */}
+                <div className="mpr-img-wrap" style={{ flexGrow: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: '#000' }}>
                   {mpr?.[panel.key]
-                    ? <img className="mpr-img" src={mpr[panel.key]} alt={panel.label} style={panelStyles[panel.key]} />
-                    : <div className="mpr-no-img">{loading ? 'Loading…' : '—'}</div>
+                    ? <img 
+                        className="mpr-img" 
+                        src={mpr[panel.key]} 
+                        alt={panel.label} 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          aspectRatio: panel.aspectRatio,
+                          objectFit: 'contain'
+                        }} 
+                      />
+                    : <div className="mpr-no-img" style={{ color: '#fff' }}>{loading ? 'Loading…' : '—'}</div>
                   }
                 </div>
 
