@@ -30,6 +30,10 @@ export default function Workspace({ imageId, metadata }) {
   const shape  = metadata?.shape  || []
   const is3d   = metadata?.is_3d  || false
   const sp     = metadata?.spacing || [1, 1, 1]
+  const spacing = (mpr?.spacing_mm?.length >= 3 ? mpr.spacing_mm : sp)
+  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = spacing
+  const coronalScaleY = (ySpacing > 0 && zSpacing > 0) ? (zSpacing / ySpacing) : 1
+  const sagittalScaleY = (xSpacing > 0 && zSpacing > 0) ? (zSpacing / xSpacing) : 1
   const fov    = is3d && shape.length >= 3
     ? { z: (shape[0] * sp[0]).toFixed(1), y: (shape[1] * (sp[1]??1)).toFixed(1), x: (shape[2] * (sp[2]??1)).toFixed(1) }
     : null
@@ -76,6 +80,11 @@ export default function Workspace({ imageId, metadata }) {
     { key: 'coronal',  label: 'Coronal (Y)',  axis: 'coronal',  max: shape[1] - 1, sp_row: sp[0]??1, sp_col: sp[2]??1 },
     { key: 'sagittal', label: 'Sagittal (X)', axis: 'sagittal', max: shape[2] - 1, sp_row: sp[0]??1, sp_col: sp[1]??1 },
   ]
+  const panelStyles = {
+    axial: undefined,
+    coronal: { transform: `scaleY(${coronalScaleY})`, transformOrigin: 'center center' },
+    sagittal: { transform: `scaleY(${sagittalScaleY})`, transformOrigin: 'center center' },
+  }
 
   return (
     <div className="page">
@@ -148,10 +157,12 @@ export default function Workspace({ imageId, metadata }) {
                   )}
                 </div>
 
-                {mpr?.[panel.key]
-                  ? <img className="mpr-img" src={mpr[panel.key]} alt={panel.label} />
-                  : <div className="mpr-no-img">{loading ? 'Loading…' : '—'}</div>
-                }
+                <div className="mpr-img-wrap">
+                  {mpr?.[panel.key]
+                    ? <img className="mpr-img" src={mpr[panel.key]} alt={panel.label} style={panelStyles[panel.key]} />
+                    : <div className="mpr-no-img">{loading ? 'Loading…' : '—'}</div>
+                  }
+                </div>
 
                 {is3d && (
                   <div className="mpr-footer">
