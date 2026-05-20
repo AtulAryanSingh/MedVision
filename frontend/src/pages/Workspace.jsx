@@ -30,10 +30,13 @@ export default function Workspace({ imageId, metadata }) {
   const shape  = metadata?.shape  || []
   const is3d   = metadata?.is_3d  || false
   const sp     = metadata?.spacing || [1, 1, 1]
-  const spacing = (mpr?.spacing_mm?.length >= 3 ? mpr.spacing_mm : sp)
-  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = spacing
-  const coronalScaleY = (ySpacing > 0 && zSpacing > 0) ? (zSpacing / ySpacing) : 1
-  const sagittalScaleY = (xSpacing > 0 && zSpacing > 0) ? (zSpacing / xSpacing) : 1
+  const resolvedSpacing = (mpr?.spacing_mm?.length >= 3 ? mpr.spacing_mm : sp)
+  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = resolvedSpacing
+  const calculateScaleY = (numerator, denominator) => (
+    denominator > 0 && numerator > 0 ? (numerator / denominator) : 1
+  )
+  const coronalScaleY = calculateScaleY(zSpacing, ySpacing)
+  const sagittalScaleY = calculateScaleY(zSpacing, xSpacing)
   const fov    = is3d && shape.length >= 3
     ? { z: (shape[0] * sp[0]).toFixed(1), y: (shape[1] * (sp[1]??1)).toFixed(1), x: (shape[2] * (sp[2]??1)).toFixed(1) }
     : null
