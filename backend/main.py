@@ -12,6 +12,7 @@ Why this file exists:
 
 import os
 import uuid
+from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,9 +34,9 @@ from api.features import router as features_router
 from api.cluster  import router as cluster_router
 from api.report   import router as report_router
 from api.patchify import router as patchify_router
-from api.export    import router as export_router
-from api.register  import router as register_router
-from api.jobs      import router as jobs_router
+from api.export   import router as export_router
+from api.register import router as register_router
+from api.jobs     import router as jobs_router
 
 # ── Legacy Core Imaging Lab router (v0.1, kept for backward compatibility) ─
 from labs.core_imaging.routes import router as core_imaging_router
@@ -82,7 +83,7 @@ async def attach_correlation_id(request: Request, call_next):
     return response
 
 
-def _error_envelope(request: Request, status_code: int, message: str, diagnostics: dict | None = None):
+def _error_envelope(request: Request, status_code: int, message: str, diagnostics: Optional[dict] = None):
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
     body = {
         "status": "error",
