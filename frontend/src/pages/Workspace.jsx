@@ -1,14 +1,11 @@
 /**
  * pages/Workspace.jsx – MPR viewer with spacing-correct aspect ratios
- *
- * Calls GET /api/mpr/{image_id} which returns Axial / Coronal / Sagittal slices
- * resampled to the correct physical aspect ratio using voxel spacing.
- * Includes window/level presets and FOV display.
+ * Includes real-time Manual Spacing Override for bad DICOM/NIfTI metadata.
  */
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client.js'
 
-/* Window / Level presets (CT-oriented, also usable for MRI) */
+/* Window / Level presets */
 const WL_PRESETS = [
   { label: 'Auto (full range)',   wc: null,  ww: null },
   { label: 'CT – Brain',          wc: 40,    ww: 80   },
@@ -27,25 +24,30 @@ export default function Workspace({ imageId, metadata }) {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
 
+  // NEW: State to hold the user's manual spacing overrides
+  const [manualSpacing, setManualSpacing] = useState({ z: null, y: null, x: null })
+
+  // 1. Extract base data from the file
   const shape  = metadata?.shape  || []
   const is3d   = metadata?.is_3d  || false
   const sp     = metadata?.spacing || [1, 1, 1]
-  const effectiveSpacing = (Array.isArray(mpr?.spacing_mm) && mpr.spacing_mm.length >= 3) ? mpr.spacing_mm : sp
+  const baseSpacing = (Array.isArray(mpr?.spacing_mm) && mpr.spacing_mm.length >= 3) ? mpr.spacing_mm : sp
   
-  // Destructure dimensions and spacing safely
   const [zDim = 1, yDim = 1, xDim = 1] = shape;
-  const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = effectiveSpacing;
+  const [fileZ = 1, fileY = 1, fileX = 1] = baseSpacing;
   
-  // Calculate true physical aspect ratios (Width / Height)
-  // Axial: Width is X, Height is Y
+  // 2. Determine effective spacing (Prefer Manual over File)
+  const zSpacing = manualSpacing.z !== null ? manualSpacing.z : fileZ;
+  const ySpacing = manualSpacing.y !== null ? manualSpacing.y : fileY;
+  const xSpacing = manualSpacing.x !== null ? manualSpacing.x : fileX;
+  
+  // 3. Calculate true physical aspect ratios (Width / Height)
   const axialRatio = (xDim * xSpacing) / (yDim * ySpacing) || 1;
-  // Coronal: Width is X, Height is Z
   const coronalRatio = (xDim * xSpacing) / (zDim * zSpacing) || 1;
-  // Sagittal: Width is Y, Height is Z
   const sagittalRatio = (yDim * ySpacing) / (zDim * zSpacing) || 1;
 
   const fov    = is3d && shape.length >= 3
-    ? { z: (shape[0] * sp[0]).toFixed(1), y: (shape[1] * (sp[1]??1)).toFixed(1), x: (shape[2] * (sp[2]??1)).toFixed(1) }
+    ? { z: (shape[0] * zSpacing).toFixed(1), y: (shape[1] * ySpacing).toFixed(1), x: (shape[2] * xSpacing).toFixed(1) }
     : null
 
   const fetchMpr = useCallback(async (sl = slices, p = preset) => {
@@ -69,7 +71,6 @@ export default function Workspace({ imageId, metadata }) {
     }
   }, [imageId, is3d]) // eslint-disable-line
 
-  /* Load on mount / imageId change */
   useEffect(() => {
     if (imageId) fetchMpr()
   }, [imageId]) // eslint-disable-line
@@ -97,7 +98,7 @@ export default function Workspace({ imageId, metadata }) {
         <h2 className="page-title">🔬 Workspace</h2>
         <p className="page-desc">
           Multi-Planar Reconstruction with geometrically-correct aspect ratios.
-          Each slice is resampled using voxel spacing so anatomical proportions are preserved.
+          Use the manual override panel if the file's metadata is incorrect.
         </p>
       </div>
 
@@ -112,7 +113,7 @@ export default function Workspace({ imageId, metadata }) {
       {imageId && (
         <>
           {/* Controls */}
-          <div className="controls-bar">
+          <div className="controls-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
             <div className="ctrl-group">
               <span className="ctrl-label">Window / Level Preset</span>
               <select
@@ -123,6 +124,28 @@ export default function Workspace({ imageId, metadata }) {
               >
                 {WL_PRESETS.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
               </select>
+            </div>
+
+            {/* NEW: Manual Spacing Override Panel */}
+            <div className="ctrl-group" style={{ paddingLeft: '1rem', borderLeft: '1px solid var(--border-color)' }}>
+              <span className="ctrl-label">Override Spacing (mm)</span>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="number" step="0.1" placeholder={`Z (${fileZ.toFixed(2)})`}
+                  className="form-input" style={{ width: '80px', padding: '0.25rem 0.5rem' }}
+                  onChange={e => setManualSpacing(prev => ({ ...prev, z: e.target.value ? parseFloat(e.target.value) : null }))}
+                />
+                <input 
+                  type="number" step="0.1" placeholder={`Y (${fileY.toFixed(2)})`}
+                  className="form-input" style={{ width: '80px', padding: '0.25rem 0.5rem' }}
+                  onChange={e => setManualSpacing(prev => ({ ...prev, y: e.target.value ? parseFloat(e.target.value) : null }))}
+                />
+                <input 
+                  type="number" step="0.1" placeholder={`X (${fileX.toFixed(2)})`}
+                  className="form-input" style={{ width: '80px', padding: '0.25rem 0.5rem' }}
+                  onChange={e => setManualSpacing(prev => ({ ...prev, x: e.target.value ? parseFloat(e.target.value) : null }))}
+                />
+              </div>
             </div>
 
             {fov && (
@@ -155,29 +178,25 @@ export default function Workspace({ imageId, metadata }) {
               <div key={panel.key} className="mpr-panel" style={{ display: 'flex', flexDirection: 'column' }}>
                 <div className="mpr-header">
                   <span className="mpr-header-label">{panel.label}</span>
-                  {mpr?.spacing_mm && (
-                    <span className="mpr-header-info">
-                      {panel.sp_row.toFixed(2)} × {panel.sp_col.toFixed(2)} mm/px
-                    </span>
-                  )}
+                  <span className="mpr-header-info">
+                    {panel.sp_row.toFixed(2)} × {panel.sp_col.toFixed(2)} mm/px
+                  </span>
                 </div>
 
-                {/* The Fix: Container uses exact physical aspect ratio, image uses object-fit */}
+                {/* THE FIX: Inner container enforces aspect ratio, image uses 'fill' */}
                 <div className="mpr-img-wrap" style={{ flexGrow: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: '#000' }}>
-                  {mpr?.[panel.key]
-                    ? <img 
+                  {mpr?.[panel.key] ? (
+                    <div style={{ width: '100%', aspectRatio: panel.aspectRatio }}>
+                      <img 
                         className="mpr-img" 
                         src={mpr[panel.key]} 
                         alt={panel.label} 
-                        style={{ 
-                          width: '100%', 
-                          height: '100%', 
-                          aspectRatio: panel.aspectRatio,
-                          objectFit: 'contain'
-                        }} 
+                        style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} 
                       />
-                    : <div className="mpr-no-img" style={{ color: '#fff' }}>{loading ? 'Loading…' : '—'}</div>
-                  }
+                    </div>
+                  ) : (
+                    <div className="mpr-no-img" style={{ color: '#fff' }}>{loading ? 'Loading…' : '—'}</div>
+                  )}
                 </div>
 
                 {is3d && (
@@ -203,14 +222,7 @@ export default function Workspace({ imageId, metadata }) {
               <div className="section-label">Volume Info</div>
               <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
                 <span className="chip">Shape: {mpr.shape?.join(' × ')}</span>
-                <span className="chip teal">Spacing: {mpr.spacing_mm?.map(s => s.toFixed(2)).join(' × ')} mm</span>
-                {mpr.fov_mm && (
-                  <>
-                    {mpr.fov_mm.z_mm && <span className="chip">FOV Z: {mpr.fov_mm.z_mm} mm</span>}
-                    <span className="chip">FOV Y: {mpr.fov_mm.y_mm} mm</span>
-                    <span className="chip">FOV X: {mpr.fov_mm.x_mm} mm</span>
-                  </>
-                )}
+                <span className="chip teal">Effective Spacing: {zSpacing.toFixed(2)} × {ySpacing.toFixed(2)} × {xSpacing.toFixed(2)} mm</span>
               </div>
             </div>
           )}
