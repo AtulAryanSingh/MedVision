@@ -30,10 +30,10 @@ export default function Workspace({ imageId, metadata }) {
   const shape  = metadata?.shape  || []
   const is3d   = metadata?.is_3d  || false
   const sp     = metadata?.spacing || [1, 1, 1]
-  const resolvedSpacing = (mpr?.spacing_mm?.length >= 3 ? mpr.spacing_mm : sp)
+  const resolvedSpacing = (Array.isArray(mpr?.spacing_mm) && mpr.spacing_mm.length >= 3 ? mpr.spacing_mm : sp)
   const [zSpacing = 1, ySpacing = 1, xSpacing = 1] = resolvedSpacing
-  const calculateScaleY = (numerator, denominator) => (
-    denominator > 0 && numerator > 0 ? (numerator / denominator) : 1
+  const calculateScaleY = (axisSpacing, referenceSpacing) => (
+    referenceSpacing > 0 && axisSpacing > 0 ? (axisSpacing / referenceSpacing) : 1
   )
   const coronalScaleY = calculateScaleY(zSpacing, ySpacing)
   const sagittalScaleY = calculateScaleY(zSpacing, xSpacing)
